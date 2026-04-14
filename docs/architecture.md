@@ -21,7 +21,7 @@ Consumes cavity output and runs the crystal design-and-analysis workflow for the
 
 - `crystal_main.py`: entry point for the crystal layer
 - `crystal_workflow.py`: orchestrates cavity-output loading, design poling, phase matching, mode matching, BK analysis, and export
-- `crystal_materials.py`: refractive-index and thermo-optic helper functions
+- `crystal_materials.py`: refractive-index and thermo-optic helper functions, and interaction-type-to-axis resolution
 - `crystal_phase_matching.py`: `Delta k`, QPM, design poling, and temperature scans
 - `crystal_mode_matching.py`: converts cavity beam data into focusing and overlap metrics
 - `crystal_boyd_kleinman.py`: focused-beam overlap model and BK/QPM analysis helpers
@@ -84,7 +84,7 @@ The crystal layer is intentionally downstream of the cavity layer rather than co
 
 High-level flow:
 
-1. `src/crystal/crystal_main.py` selects the crystal model, wavelengths, design temperature, and phase-matching mode.
+1. `src/crystal/crystal_main.py` selects the crystal model, wavelengths, interaction type, design temperature, and phase-matching mode.
 2. `src/crystal/crystal_workflow.py` loads `results/<geometry>/cavity/cavity_simulation_output.json`.
 3. The cavity JSON is converted into a `CrystalContext`.
 4. In design mode, `crystal_phase_matching.py` derives the required QPM period from the chosen wavelengths and design temperature. In analysis mode, the configured period is used directly.

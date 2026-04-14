@@ -95,6 +95,16 @@ class RefractiveIndexModel(Mapping[str, object]):
         return 4
 
 
+@dataclass(frozen=True)
+class PhaseMatchingConfiguration:
+    """Resolved axis assignment for one nonlinear interaction type."""
+
+    phase_matching_type: str
+    pump_axis: str
+    signal_axis: str
+    idler_axis: str
+
+
 def central_diff(f: Callable[[float], float], x: float, dx: float) -> float:
     """Return the central finite-difference derivative of ``f`` at ``x``."""
     return (f(x + dx) - f(x - dx)) / (2.0 * dx)
@@ -321,6 +331,29 @@ _MODEL_SPECS: dict[str, LiteratureAxisModelSet] = {
     ),
 }
 
+_PHASE_MATCHING_CONFIGS: dict[str, PhaseMatchingConfiguration] = {
+    "type_0": PhaseMatchingConfiguration(
+        phase_matching_type="type_0",
+        pump_axis="z",
+        signal_axis="z",
+        idler_axis="z",
+    ),
+    "type_i": PhaseMatchingConfiguration(
+        phase_matching_type="type_I",
+        pump_axis="z",
+        signal_axis="y",
+        idler_axis="y",
+    ),
+    # For degenerate operation the signal/idler labels are conventional; the
+    # important distinction is that the two generated fields use different axes.
+    "type_ii": PhaseMatchingConfiguration(
+        phase_matching_type="type_II",
+        pump_axis="z",
+        signal_axis="y",
+        idler_axis="z",
+    ),
+}
+
 
 def supported_crystal_models() -> tuple[str, ...]:
     """Return the supported literature models."""
@@ -336,6 +369,27 @@ def _validate_model_name(model_name: str) -> str:
 
 def _build_axis_function(axis_model: AxisModel) -> AxisFunction:
     return lambda wavelength_m, T_K: _evaluate_axis_model(wavelength_m, T_K, axis_model)
+
+
+def get_axis_index_function(refractive_index_model: RefractiveIndexModel, axis: str) -> AxisFunction:
+    """Return the refractive-index function for one crystal axis."""
+    axis_key = str(axis).lower()
+    try:
+        return getattr(refractive_index_model, f"n_{axis_key}_of_T")
+    except AttributeError as exc:
+        raise ValueError(f"Unknown crystal axis: {axis}. Expected one of: x, y, z.") from exc
+
+
+def resolve_phase_matching_configuration(phase_matching_type: str) -> PhaseMatchingConfiguration:
+    """Resolve the pump/signal/idler axis assignment for one interaction type."""
+    normalized_type = str(phase_matching_type).lower()
+    try:
+        return _PHASE_MATCHING_CONFIGS[normalized_type]
+    except KeyError as exc:
+        supported = ", ".join(_PHASE_MATCHING_CONFIGS)
+        raise ValueError(
+            f"Unknown phase_matching_type: {phase_matching_type}. Supported values: {supported}"
+        ) from exc
 
 
 @lru_cache(maxsize=None)
@@ -386,12 +440,15 @@ __all__ = [
     "AxisModel",
     "LiteratureAxisModelSet",
     "RefractiveIndexModel",
+    "PhaseMatchingConfiguration",
     "central_diff",
     "n_sellmeier_um",
     "n_from_model",
     "dn_dT_numeric",
     "supported_crystal_models",
     "build_refractive_index_model",
+    "get_axis_index_function",
+    "resolve_phase_matching_configuration",
     "nx",
     "ny",
     "nz",

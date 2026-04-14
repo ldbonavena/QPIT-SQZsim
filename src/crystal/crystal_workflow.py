@@ -266,6 +266,15 @@ def print_crystal_summary(result: CrystalSimulationResult) -> None:
     print("Crystal simulation summary")
     print("-------------------------")
     print(f"Geometry: {result.context.geometry}")
+    phase_matching_type = phase.get("phase_matching_type")
+    pump_axis = phase.get("pump_axis")
+    signal_axis = phase.get("signal_axis")
+    idler_axis = phase.get("idler_axis")
+    if phase_matching_type is not None and pump_axis is not None and signal_axis is not None and idler_axis is not None:
+        print(
+            "Interaction type: "
+            f"{phase_matching_type} ({pump_axis} -> {signal_axis} + {idler_axis})"
+        )
     print(f"Best phase-matching temperature: {t_best:.3f} K")
     print(f"Best phase-matching power factor: {pm_best:.6f}")
     print(f"Beam waist in crystal: {mode.waist_crystal_m*1e6:.3f} um")

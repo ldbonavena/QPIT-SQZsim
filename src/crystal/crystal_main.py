@@ -23,7 +23,11 @@ from typing import Any
 
 # Support both package execution and direct interactive execution.
 try:
-    from .crystal_materials import build_refractive_index_model
+    from .crystal_materials import (
+        build_refractive_index_model,
+        get_axis_index_function,
+        resolve_phase_matching_configuration,
+    )
     from .crystal_mode_matching import build_mode_matching_context_from_cavity_output
     from .crystal_plotter import (
         plot_bk_master_map_sigma_xi,
@@ -45,7 +49,11 @@ except ImportError:
     import sys
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from crystal.crystal_materials import build_refractive_index_model
+    from crystal.crystal_materials import (
+        build_refractive_index_model,
+        get_axis_index_function,
+        resolve_phase_matching_configuration,
+    )
     from crystal.crystal_mode_matching import build_mode_matching_context_from_cavity_output
     from crystal.crystal_plotter import (
         plot_bk_master_map_sigma_xi,
@@ -100,6 +108,7 @@ WAVELENGTH_S_M = 1550e-9  # Signal wavelength [m]
 WAVELENGTH_I_M = 1550e-9  # Idler wavelength [m] (equal to signal in the degenerate case)
 
 PHASE_MATCHING_MODE = "design"  # "design" derives the QPM period from wavelengths + temperature; "analysis" uses ANALYSIS_LAMBDA0_M directly
+PHASE_MATCHING_TYPE = "type_II"  # allowed: "type_0", "type_I", "type_II"
 DESIGN_TEMPERATURE_K = 318.15   # Design temperature [K] used to derive the QPM period in design mode
 ANALYSIS_LAMBDA0_M = 27.7e-6    # QPM poling period Λ [m] used only when PHASE_MATCHING_MODE = "analysis"
 
@@ -133,13 +142,18 @@ def _build_wavelength_temperature_index_function(axis_model):
 
 
 refractive_index_model = build_refractive_index_model(CRYSTAL_MODEL)
-# Bind pump/signal/idler to one model so nx/ny/nz never come from mixed sources.
-n_p_of_T = _build_temperature_index_function(refractive_index_model["n_z_of_T"], WAVELENGTH_P_M)
-n_s_of_T = _build_temperature_index_function(refractive_index_model["n_y_of_T"], WAVELENGTH_S_M)
-n_i_of_T = _build_temperature_index_function(refractive_index_model["n_y_of_T"], WAVELENGTH_I_M)
-n_p_of_lambda_T = _build_wavelength_temperature_index_function(refractive_index_model["n_z_of_T"])
-n_s_of_lambda_T = _build_wavelength_temperature_index_function(refractive_index_model["n_y_of_T"])
-n_i_of_lambda_T = _build_wavelength_temperature_index_function(refractive_index_model["n_y_of_T"])
+phase_config = resolve_phase_matching_configuration(PHASE_MATCHING_TYPE)
+pump_axis_model = get_axis_index_function(refractive_index_model, phase_config.pump_axis)
+signal_axis_model = get_axis_index_function(refractive_index_model, phase_config.signal_axis)
+idler_axis_model = get_axis_index_function(refractive_index_model, phase_config.idler_axis)
+
+# Bind pump/signal/idler to one model so the selected axes never come from mixed sources.
+n_p_of_T = _build_temperature_index_function(pump_axis_model, WAVELENGTH_P_M)
+n_s_of_T = _build_temperature_index_function(signal_axis_model, WAVELENGTH_S_M)
+n_i_of_T = _build_temperature_index_function(idler_axis_model, WAVELENGTH_I_M)
+n_p_of_lambda_T = _build_wavelength_temperature_index_function(pump_axis_model)
+n_s_of_lambda_T = _build_wavelength_temperature_index_function(signal_axis_model)
+n_i_of_lambda_T = _build_wavelength_temperature_index_function(idler_axis_model)
 
 
 # %%
@@ -190,13 +204,17 @@ phase = compute_crystal_phase_matching(
     alpha_perK=ALPHA_PER_K,
     qpm_order_m=QPM_ORDER_M,
 )
+phase["phase_matching_type"] = phase_config.phase_matching_type
+phase["pump_axis"] = phase_config.pump_axis
+phase["signal_axis"] = phase_config.signal_axis
+phase["idler_axis"] = phase_config.idler_axis
 
 # %%
 # Determine operating temperature and refractive index for mode matching
 
 phase_temperature_for_mode_matching_K = float(phase["T_best_K"][0])
 mode_matching_n_crystal = float(
-    refractive_index_model["n_y_of_T"](
+    signal_axis_model(
         WAVELENGTH_S_M,
         phase_temperature_for_mode_matching_K,
     )
@@ -255,6 +273,10 @@ output = build_crystal_simulation_output(result)
 output["inputs"]["crystal_model"] = CRYSTAL_MODEL
 output["inputs"]["n_crystal"] = mode_matching_n_crystal
 output["inputs"]["phase_matching_mode"] = PHASE_MATCHING_MODE
+output["inputs"]["phase_matching_type"] = phase_config.phase_matching_type
+output["inputs"]["pump_axis"] = phase_config.pump_axis
+output["inputs"]["signal_axis"] = phase_config.signal_axis
+output["inputs"]["idler_axis"] = phase_config.idler_axis
 output["inputs"]["design_temperature_K"] = DESIGN_TEMPERATURE_K if PHASE_MATCHING_MODE == "design" else None
 output["inputs"]["Lambda0_m"] = Lambda0_m
 if design_poling is not None:

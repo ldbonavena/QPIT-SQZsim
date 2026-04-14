@@ -58,6 +58,26 @@ Temperature affects the crystal model in two ways:
 
 The function `scan_phase_matching_vs_temperature(...)` evaluates these effects over a temperature grid and returns the best operating point together with the full scan arrays. In design mode, this scan is performed after the code first derives the QPM period with `compute_design_poling_period(...)` at the chosen design temperature.
 
+## Interaction Type Selection
+
+The nonlinear interaction type is selected explicitly in `src/crystal/crystal_main.py` through `PHASE_MATCHING_TYPE`.
+
+The currently supported values are:
+
+- `type_0`
+- `type_I`
+- `type_II`
+
+`src/crystal/crystal_main.py` treats this as the single source of truth for the chosen process. The mapping from interaction type to pump/signal/idler crystal axes is then resolved internally by `PhaseMatchingConfiguration` and `resolve_phase_matching_configuration(...)` in `src/crystal/crystal_materials.py`. Downstream modules receive only the resolved refractive-index functions and do not implement their own type-specific branching.
+
+The currently implemented axis mapping is:
+
+- `type_0`: pump `z`, signal `z`, idler `z`
+- `type_I`: pump `z`, signal `y`, idler `y`
+- `type_II`: pump `z`, signal `y`, idler `z`
+
+Implementation note: the current `type_II` support reflects the present axis-based refractive-index assignment used by the crystal layer. It should not be overinterpreted as a fully general polarization treatment beyond what the rest of the current code explicitly models.
+
 ## Gaussian Beam Focusing
 
 Phase matching alone is not enough. The field distribution inside the crystal also matters, because nonlinear coupling depends on how tightly the Gaussian mode is focused.
@@ -173,7 +193,7 @@ So mode matching here means more than geometric alignment: it is the compatibili
 
 The core file responsibilities are:
 
-- `src/crystal/crystal_materials.py`: dispersion and thermo-optic material models
+- `src/crystal/crystal_materials.py`: dispersion and thermo-optic material models, plus interaction-type-to-axis resolution
 - `src/crystal/crystal_phase_matching.py`: `Delta k`, QPM, and temperature scans
 - `src/crystal/crystal_mode_matching.py`: cavity-output parsing and focusing quantities
 - `src/crystal/crystal_boyd_kleinman.py`: focused-beam overlap model

@@ -206,6 +206,8 @@ In the default `design` mode, the user specifies the target wavelengths, crystal
 
 An `analysis` mode is also available when you want to study a chosen crystal configuration directly using an explicit poling period.
 
+The crystal simulation also supports an explicit nonlinear interaction-type selection through `PHASE_MATCHING_TYPE` in `src/crystal/crystal_main.py`. The currently supported choices are `type_0`, `type_I`, and `type_II`. The corresponding pump/signal/idler axis assignment is resolved internally by `src/crystal/crystal_materials.py`.
+
 The high-level crystal execution order is:
 
 1. Load cavity context from `results/<geometry>/cavity/`
