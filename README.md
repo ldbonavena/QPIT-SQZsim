@@ -40,7 +40,7 @@ QPIT-SQZsim/
             __init__.py
             constants.py
             results_paths.py
-        opo/        # Future nonlinear and squeezing simulations
+        opo/        # Initial OPO modeling and squeezing workflow (experimental)
 
     LICENSE
     README.md
@@ -51,7 +51,7 @@ The project is structured so that each module has a clear responsibility:
 
 - **cavity/**: geometry definition, ABCD matrices, stability analysis, beam modes
 - **crystal/**: crystal design and analysis workflow including dispersion, phase matching, derived QPM poling, mode matching, and focused‑beam nonlinear interaction (Boyd–Kleinman theory)
-- **opo/**: nonlinear OPO dynamics and squeezing simulations (future work)
+- **opo/**: initial OPO dynamics and squeezing workflow under development
 - **common/**: reusable constants and shared helpers such as results-path management
 
 ---
@@ -222,7 +222,7 @@ The high-level crystal execution order is:
 10. Generate plots
 11. Save outputs
 
-The BK analysis is integrated into the structured result, the console summary, the exported JSON, and the saved plots. The current crystal plotting outputs are:
+The crystal plotting outputs are:
 
 - BK master map
 - QPM / poling-length map
@@ -246,23 +246,11 @@ Shared utilities used by both layers live in:
 
 ---
 
-# What Changed
-
-Recent crystal updates:
-
-- the main crystal workflow is now design-oriented rather than assuming a fixed input poling period
-- the execution order now follows design poling -> phase matching -> operating-point mode matching -> BK analysis
-- BK analysis is included in the summary, JSON output, and plots
-- the crystal output now includes BK master-map and QPM / poling-length figures
-- BK wavelength sweeps enforce energy conservation and the QPM guide is labeled as a first-order QPM guide
-
----
-
 # Future extensions
 
 Planned developments include:
 
-- full thermo‑optic crystal models
+- additional crystal-model refinements and validation
 - nonlinear coupling estimation
 - OPO threshold simulations
 - squeezing spectrum computation
