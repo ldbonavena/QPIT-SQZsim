@@ -42,6 +42,13 @@ QPIT-SQZsim/
             constants.py
             results_paths.py
         opo/        # Below-threshold degenerate OPO modeling and squeezing workflow
+            __init__.py
+            opo_main.py
+            opo_workflow.py
+            opo_model.py
+            opo_langevin.py
+            opo_squeezing.py
+            opo_plotter.py
 
     LICENSE
     README.md
