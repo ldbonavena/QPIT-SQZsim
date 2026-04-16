@@ -1,9 +1,9 @@
-"""Linearized Langevin scaffolding for future OPO noise calculations.
+"""Linearized quadrature-basis Langevin scaffold for OPO noise calculations.
 
-The present implementation only constructs the bookkeeping objects needed for
-future quantum-noise calculations. It intentionally avoids a full physical
-derivation while establishing the interfaces used by the workflow and plotting
-layers.
+The present implementation keeps a compact 2x2 state-space model in a
+quadrature basis. It remains intentionally minimal, but the two axes are now
+treated explicitly as orthogonal quadratures whose mixing is controlled by the
+cavity detuning.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ from .opo_model import OPOModelResult
 
 @dataclass(frozen=True)
 class OPOLangevinModel:
-    """Container for a linearized Langevin state-space placeholder."""
+    """Container for a linearized 2x2 quadrature-basis Langevin model."""
 
     quadrature_labels: tuple[str, ...]
     drift_matrix: np.ndarray
@@ -27,12 +27,15 @@ class OPOLangevinModel:
 
 
 def build_langevin_model(model: OPOModelResult) -> OPOLangevinModel:
-    """Construct a minimal state-space scaffold for a degenerate below-threshold OPO."""
+    """Construct a minimal quadrature-basis Langevin model for a degenerate below-threshold OPO."""
     linewidth_hz = max(model.cavity_linewidth_Hz, 0.0)
     linewidth_rad_s = 2.0 * np.pi * linewidth_hz
     detuning_rad_s = 2.0 * np.pi * model.cavity_detuning_Hz
     sigma = model.pump_parameter
 
+    # The diagonal entries represent quadrature damping modified by the
+    # below-threshold pump parameter. The off-diagonal entries represent
+    # quadrature mixing/rotation induced by the cavity detuning.
     drift_matrix = np.array(
         [
             [-(linewidth_rad_s) * (1.0 - sigma), detuning_rad_s],
@@ -43,13 +46,14 @@ def build_langevin_model(model: OPOModelResult) -> OPOLangevinModel:
 
     identity = np.eye(2, dtype=float)
     return OPOLangevinModel(
-        quadrature_labels=("X1", "X2"),
+        quadrature_labels=("X", "P"),
         drift_matrix=drift_matrix,
         input_matrix=identity.copy(),
         noise_coupling_matrix=identity,
         notes=(
-            "Placeholder linearized Langevin scaffold.",
-            "Matrices are structured for future degenerate OPO quadrature calculations.",
+            "Minimal 2x2 quadrature-basis Langevin model.",
+            "The X/P axes represent orthogonal quadrature candidates for squeezing and anti-squeezing.",
+            "Cavity detuning rotates and mixes the quadratures through the drift-matrix off-diagonal terms.",
         ),
     )
 

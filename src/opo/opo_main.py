@@ -3,7 +3,7 @@
 Main entry point for OPO simulation.
 
 This script orchestrates the initial OPO workflow:
-cavity/crystal outputs -> OPO model -> Langevin scaffold -> squeezing placeholders -> export
+cavity/crystal outputs -> OPO model -> Langevin scaffold -> Langevin-based squeezing spectra -> export
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from pathlib import Path
 
 # Support both package execution and direct interactive execution.
 try:
-    from .opo_plotter import plot_opo_operating_point_summary, plot_opo_spectrum_summary
+    from .opo_plotter import plot_opo_spectrum_summary
     from .opo_workflow import (
         build_opo_simulation_output,
         build_opo_simulation_result,
@@ -36,7 +36,7 @@ except ImportError:
     import sys
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from opo.opo_plotter import plot_opo_operating_point_summary, plot_opo_spectrum_summary
+    from opo.opo_plotter import plot_opo_spectrum_summary
     from opo.opo_workflow import (
         build_opo_simulation_output,
         build_opo_simulation_result,
@@ -68,6 +68,7 @@ OPO_CONFIG = {
     "analysis_span_Hz": (1e5, 20e6),
     "n_analysis_points": 400,
     "detection_efficiency": 0.95,
+    "lo_phase_rad": 1.0,
 }
 
 
@@ -94,7 +95,7 @@ langevin = compute_opo_langevin(model)
 
 
 # %%
-# Compute squeezing placeholders
+# Compute Langevin-based squeezing spectrum
 
 spectrum = compute_opo_squeezing(parameters, model, langevin)
 
@@ -127,7 +128,6 @@ output = build_opo_simulation_output(result)
 # Generate plots
 
 fig_spectrum = plot_opo_spectrum_summary(output["results"]["spectrum"])
-fig_summary = plot_opo_operating_point_summary(output["results"]["model"])
 
 
 # %%
@@ -135,9 +135,8 @@ fig_summary = plot_opo_operating_point_summary(output["results"]["model"])
 
 outputs_info = None
 if SAVE_OUTPUTS:
-    outputs_info = save_opo_outputs(GEOMETRY, output, fig_spectrum, fig_summary)
+    outputs_info = save_opo_outputs(GEOMETRY, output, fig_spectrum, None)
     print(f"Saved OPO output to: {outputs_info['opo_output_json']}")
     print(f"Saved OPO spectrum plot to: {outputs_info['opo_squeezing_spectrum_png']}")
-    print(f"Saved OPO summary plot to: {outputs_info['opo_operating_point_summary_png']}")
 
 # %%

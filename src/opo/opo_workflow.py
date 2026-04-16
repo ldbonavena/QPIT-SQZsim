@@ -2,7 +2,7 @@
 
 The OPO layer consumes the exported cavity and crystal results for a selected
 geometry, builds a minimal below-threshold degenerate OPO operating point,
-prepares a Langevin-model scaffold, constructs placeholder squeezing spectra,
+prepares a Langevin-model scaffold, constructs Langevin-based squeezing spectra,
 and saves the resulting outputs in ``results/<geometry>/opo/``.
 """
 
@@ -97,7 +97,7 @@ def compute_opo_model(context: OPOContext, config: dict[str, Any]) -> tuple[OPOP
 
 
 def compute_opo_langevin(model: OPOModelResult) -> OPOLangevinModel:
-    """Build the placeholder Langevin scaffold for the current OPO model."""
+    """Build the Langevin scaffold for the current OPO model."""
     return build_langevin_model(model)
 
 
@@ -106,7 +106,7 @@ def compute_opo_squeezing(
     model: OPOModelResult,
     langevin: OPOLangevinModel,
 ) -> OPOSqueezingSpectrum:
-    """Build the placeholder squeezing-spectrum payload."""
+    """Build the Langevin-based squeezing-spectrum payload."""
     return compute_squeezing_spectra(parameters, model, langevin)
 
 
@@ -133,9 +133,17 @@ def print_opo_summary(result: OPOSimulationResult) -> None:
     print("----------------------")
     print(f"Geometry: {result.context.geometry}")
     print(f"Pump power: {result.parameters.pump_power_W:.6f} W")
-    print(f"Threshold power: {result.parameters.threshold_power_W:.6f} W")
+    print(f"Calibration threshold power: {result.model.baseline_threshold_power_W:.6f} W")
+    print(f"Crystal gain source: {result.model.crystal_gain_source}")
+    print(f"Nonlinear coupling proxy: {result.model.nonlinear_coupling_proxy:.6f}")
+    print(f"Effective nonlinear coupling: {result.model.effective_nonlinear_coupling:.6f}")
+    print(f"Cavity loss scale: {result.model.cavity_loss_scale:.6f}")
+    print(f"Effective threshold power: {result.model.effective_threshold_power_W:.6f} W")
     print(f"Pump parameter sigma: {result.model.pump_parameter:.6f}")
     print(f"Below threshold: {result.model.below_threshold}")
+    print(f"Cavity detuning: {result.model.cavity_detuning_Hz:.6f} Hz")
+    print(f"LO phase: {result.parameters.lo_phase_rad:.6f} rad")
+    print(f"Optimal squeezing phase (low frequency): {result.spectrum.optimal_phase_rad[0]:.6f} rad")
     print(f"Escape efficiency: {result.model.escape_efficiency:.6f}")
     print(f"Detection efficiency: {result.parameters.detection_efficiency:.6f}")
     print(f"Analysis sideband: {result.parameters.analysis_sideband_Hz:.3f} Hz")
@@ -204,8 +212,9 @@ def save_opo_outputs(
         "result_dir": _repo_relative(result_dir),
         "opo_output_json": _repo_relative(json_path),
         "opo_squeezing_spectrum_png": _repo_relative(spectrum_path),
-        "opo_operating_point_summary_png": _repo_relative(summary_path),
     }
+    if fig_summary is not None:
+        outputs_info["opo_operating_point_summary_png"] = _repo_relative(summary_path)
     output["outputs"] = outputs_info
 
     with json_path.open("w", encoding="utf-8") as f:

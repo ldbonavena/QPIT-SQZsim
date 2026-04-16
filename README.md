@@ -17,6 +17,7 @@ QPIT-SQZsim/
         architecture.md
         cavity.md
         crystal.md
+        opo.md
     results/        # local simulation outputs; not intended for version control
     src/
         cavity/     # Cavity geometry and optical mode analysis
@@ -40,7 +41,7 @@ QPIT-SQZsim/
             __init__.py
             constants.py
             results_paths.py
-        opo/        # Initial OPO modeling and squeezing workflow (experimental)
+        opo/        # Below-threshold degenerate OPO modeling and squeezing workflow
 
     LICENSE
     README.md
@@ -51,7 +52,7 @@ The project is structured so that each module has a clear responsibility:
 
 - **cavity/**: geometry definition, ABCD matrices, stability analysis, beam modes
 - **crystal/**: crystal design and analysis workflow including dispersion, phase matching, derived QPM poling, mode matching, and focused‑beam nonlinear interaction (Boyd–Kleinman theory)
-- **opo/**: initial OPO dynamics and squeezing workflow under development
+- **opo/**: below-threshold degenerate OPO modeling, Langevin quadrature response, and squeezing spectra
 - **common/**: reusable constants and shared helpers such as results-path management
 
 ---
@@ -101,6 +102,8 @@ results/
             qpm_length_poling_map.png
             boyd_kleinman_analysis.png
         opo/
+            opo_simulation_output.json
+            opo_squeezing_spectrum.png
 ```
 
 Each run produces:
@@ -141,6 +144,27 @@ The crystal results directory now also includes:
 - `boyd_kleinman_master_map.png`: universal `h_BK(\sigma,\xi)` map with the system reference operating point and the theoretical master-map optimum
 - `qpm_length_poling_map.png`: normalized QPM / poling-length map with first-order QPM guide
 - `boyd_kleinman_analysis.png`: system-specific BK sweep analysis around the current operating point
+
+**opo_simulation_output.json**
+
+Contains the OPO-layer inputs and derived operating-point / spectrum quantities, including:
+
+- calibration threshold power
+- crystal gain source and nonlinear coupling proxy
+- effective threshold power
+- pump parameter sigma
+- cavity linewidth, escape efficiency, and detuning
+- quadrature squeezing results
+- measured homodyne spectrum and optimal squeezing phase
+
+**opo_squeezing_spectrum.png**
+
+Frequency-domain OPO noise spectrum in dB, including:
+
+- inferred squeezing
+- inferred anti-squeezing
+- measured quadrature for the selected LO phase
+- shot-noise reference
 
 ---
 
@@ -185,12 +209,14 @@ Run the simulation layers directly from their main entry points:
 
 - `src/cavity/cavity_main.py`
 - `src/crystal/crystal_main.py`
+- `src/opo/opo_main.py`
 
 Typical usage:
 
 ```bash
 python -m src.cavity.cavity_main
 python -m src.crystal.crystal_main
+python -m src.opo.opo_main
 ```
 
 Both scripts are designed to be run interactively in VS Code using `# %%` cells or as plain Python entry points.
@@ -235,6 +261,20 @@ Shared utilities used by both layers live in:
 - `src/common/constants.py`
 - `src/common/results_paths.py`
 
+## OPO Workflow
+
+The OPO layer consumes the exported cavity and crystal results and builds a compact below-threshold degenerate OPO model. It uses those upstream results to define a physics-informed operating point, constructs a linearized quadrature Langevin model in the `X/P` basis, and produces frequency-domain squeezing spectra.
+
+Current OPO capabilities include:
+
+- physics-informed threshold modeling using cavity loss and crystal nonlinear coupling
+- a 2x2 quadrature Langevin model in the `X/P` basis
+- frequency-dependent squeezing and anti-squeezing spectra
+- homodyne measurement with configurable LO phase via `lo_phase_rad`
+- computation of squeezing, anti-squeezing, measured quadrature spectrum, and optimal squeezing phase
+
+The current implementation is a compact, below-threshold degenerate OPO model intended for rapid exploration and integration with cavity/crystal simulations. It is not yet a full first-principles quantum input-output treatment.
+
 ---
 
 # Design principles
@@ -251,9 +291,8 @@ Shared utilities used by both layers live in:
 Planned developments include:
 
 - additional crystal-model refinements and validation
-- nonlinear coupling estimation
-- OPO threshold simulations
-- squeezing spectrum computation
+- further refinement of OPO threshold modeling toward first-principles formulations
+- improved quantum input-output and noise modeling
 - quantum noise and detection modeling
 
 The modular structure of the repository is designed so that each layer (cavity → crystal → OPO) builds directly on the results exported by the previous stage.
@@ -267,6 +306,7 @@ Detailed documentation is available in the `docs/` folder:
 - architecture overview
 - cavity theory and outputs
 - crystal modeling
+- OPO modeling and squeezing spectra
 
 ---
 

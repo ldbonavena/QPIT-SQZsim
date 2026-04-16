@@ -36,7 +36,14 @@ Shared infrastructure used by multiple simulation layers.
 
 ### `src/opo/`
 
-Reserved for future OPO dynamics and squeezing calculations. The current architecture already leaves a clean handoff point for this layer.
+Consumes cavity and crystal outputs and runs the current below-threshold degenerate OPO and squeezing workflow.
+
+- `opo_main.py`: entry point for the OPO layer
+- `opo_workflow.py`: orchestrates cavity/crystal loading, operating-point construction, Langevin modeling, squeezing spectra, and export
+- `opo_model.py`: operating-point quantities and threshold proxies derived from cavity/crystal results
+- `opo_langevin.py`: 2x2 quadrature-basis Langevin model
+- `opo_squeezing.py`: frequency-domain quadrature and homodyne spectra
+- `opo_plotter.py`: OPO spectrum visualization
 
 ## Execution Pattern
 
@@ -101,7 +108,7 @@ Today, the crystal layer relies most directly on:
 - `n_crystal`
 - optionally the exported `q` parameters for richer downstream mode context
 
-This output is the intended handoff to a future OPO layer, where nonlinear coupling and cavity response will be combined into threshold and squeezing predictions.
+This output is the handoff to the OPO layer, where nonlinear coupling and cavity response are combined into threshold and squeezing predictions.
 
 ## Results Layout
 
@@ -120,7 +127,7 @@ results/<geometry>/crystal/
 results/<geometry>/opo/
 ```
 
-This layout reflects the staged physical workflow rather than the implementation details. A single geometry therefore accumulates all cavity, crystal, and future OPO results in one place.
+This layout reflects the staged physical workflow rather than the implementation details. A single geometry therefore accumulates all cavity, crystal, and OPO results in one place.
 
 ## Why the Design Is Modular
 
@@ -132,6 +139,6 @@ On the software side, the JSON handoff makes dependencies explicit. The crystal 
 
 - add new cavity geometries without rewriting the crystal layer
 - swap in richer crystal models without changing resonator code
-- develop the future OPO module against a stable, file-based interface
+- develop the OPO module against a stable, file-based interface
 
 The result is a pipeline that mirrors the physical modeling hierarchy of the experiment.
