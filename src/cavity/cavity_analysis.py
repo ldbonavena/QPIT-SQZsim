@@ -138,6 +138,26 @@ def hemilithic_q_parameter(radius_of_curvature, air_gap, crystal_length, refract
     return cavity_q_parameter(matrix)
 
 
+def monolithic_m_factor(radius_of_curvature, crystal_length, refractive_index):
+    """Return m-factor for a monolithic crystal cavity."""
+    matrix = CavityAbcdBuilder.monolithic_roundtrip(
+        crystal_length,
+        refractive_index,
+        radius_of_curvature,
+    )
+    return cavity_stability(matrix)
+
+
+def monolithic_q_parameter(radius_of_curvature, crystal_length, refractive_index):
+    """Return q parameter for a monolithic crystal cavity."""
+    matrix = CavityAbcdBuilder.monolithic_roundtrip(
+        crystal_length,
+        refractive_index,
+        radius_of_curvature,
+    )
+    return cavity_q_parameter(matrix)
+
+
 def triangle_m_factor(width, height, crystal_length, radius_of_curvature, refractive_index, plane="sagittal"):
     """Return m-factor for a triangular cavity."""
     matrix = CavityAbcdBuilder.triangle_roundtrip(
@@ -210,6 +230,18 @@ def make_m_factor_estimator(geometry: str, plane: str = "sagittal"):
             cse=True,
         )
 
+    if geometry == "monolithic":
+        radius_of_curvature, crystal_length, refractive_index = sp.symbols(
+            "radius_of_curvature crystal_length refractive_index", positive=True, real=True
+        )
+        expr = monolithic_m_factor(radius_of_curvature, crystal_length, refractive_index)
+        return sp.lambdify(
+            (radius_of_curvature, crystal_length, refractive_index),
+            expr,
+            modules="numpy",
+            cse=True,
+        )
+
     if geometry == "triangle":
         width, height, crystal_length, radius_of_curvature, refractive_index = sp.symbols(
             "width height crystal_length radius_of_curvature refractive_index", positive=True, real=True
@@ -222,7 +254,7 @@ def make_m_factor_estimator(geometry: str, plane: str = "sagittal"):
             cse=True,
         )
 
-    raise ValueError("geometry must be 'bowtie', 'linear', 'triangle', or 'hemilithic'")
+    raise ValueError("geometry must be 'bowtie', 'linear', 'triangle', 'hemilithic', or 'monolithic'")
 
 
 def make_q_estimator(geometry: str, plane: str = "sagittal"):
@@ -271,6 +303,18 @@ def make_q_estimator(geometry: str, plane: str = "sagittal"):
             cse=True,
         )
 
+    if geometry == "monolithic":
+        radius_of_curvature, crystal_length, refractive_index = sp.symbols(
+            "radius_of_curvature crystal_length refractive_index", positive=True, real=True
+        )
+        expr = monolithic_q_parameter(radius_of_curvature, crystal_length, refractive_index)
+        return sp.lambdify(
+            (radius_of_curvature, crystal_length, refractive_index),
+            expr,
+            modules="numpy",
+            cse=True,
+        )
+
     if geometry == "triangle":
         width, height, crystal_length, radius_of_curvature, refractive_index = sp.symbols(
             "width height crystal_length radius_of_curvature refractive_index", positive=True, real=True
@@ -283,7 +327,7 @@ def make_q_estimator(geometry: str, plane: str = "sagittal"):
             cse=True,
         )
 
-    raise ValueError("geometry must be 'bowtie', 'linear', 'triangle', or 'hemilithic'")
+    raise ValueError("geometry must be 'bowtie', 'linear', 'triangle', 'hemilithic', or 'monolithic'")
 
 
 __all__ = [
@@ -300,6 +344,8 @@ __all__ = [
     "linear_q_parameter",
     "hemilithic_m_factor",
     "hemilithic_q_parameter",
+    "monolithic_m_factor",
+    "monolithic_q_parameter",
     "triangle_m_factor",
     "triangle_q_parameter",
     "make_m_factor_estimator",

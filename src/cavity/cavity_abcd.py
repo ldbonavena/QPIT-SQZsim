@@ -88,6 +88,27 @@ class CavityAbcdBuilder:
         )
 
     @staticmethod
+    def monolithic_roundtrip(
+        crystal_length,
+        refractive_index,
+        radius_of_curvature,
+    ):
+        """Round-trip matrix for a monolithic plano-convex crystal cavity.
+
+        The reference plane is the planar coated crystal facet on the crystal
+        side, so the planar-facet reflection is an identity operation and is
+        omitted. The round trip therefore consists of one forward crystal pass,
+        reflection from the curved coated facet, and one return crystal pass.
+        """
+        validate_nonnegative(crystal_length, "crystal_length")
+        return Abcd.chain(
+            Abcd.planar_interface(refractive_index, refractive_index),
+            Abcd.propagation(crystal_length),
+            Abcd.mirror(radius_of_curvature, 0, "tangential"),
+            Abcd.propagation(crystal_length),
+        )
+
+    @staticmethod
     def triangle_roundtrip(
         width,
         height,
@@ -149,6 +170,15 @@ class CavityAbcdBuilder:
                 radius,
                 kwargs["refractive_index"],
             )
+        if geometry == "monolithic":
+            radius = kwargs.get("mirror_radius", kwargs.get("radius_of_curvature"))
+            if radius is None:
+                raise ValueError("monolithic geometry requires mirror_radius or radius_of_curvature")
+            return CavityAbcdBuilder.monolithic_roundtrip(
+                kwargs["crystal_length"],
+                kwargs["refractive_index"],
+                radius,
+            )
         if geometry == "triangle":
             return CavityAbcdBuilder.triangle_roundtrip(
                 kwargs["width"],
@@ -158,7 +188,7 @@ class CavityAbcdBuilder:
                 kwargs["refractive_index"],
                 kwargs.get("plane", "sagittal"),
             )
-        raise ValueError("geometry must be 'bowtie', 'linear', 'triangle', or 'hemilithic'")
+        raise ValueError("geometry must be 'bowtie', 'linear', 'triangle', 'hemilithic', or 'monolithic'")
 
 
 __all__ = [

@@ -52,6 +52,12 @@ class CrystalSimulationResult:
     context: CrystalContext
     phase_matching: dict[str, Any]
     mode_matching: ModeMatchingResult
+    phase_matching_operating_point: dict[str, Any] | None = None
+    double_resonance_operating_point: dict[str, Any] | None = None
+    selected_operating_point_mode: str | None = None
+    selected_operating_point: dict[str, Any] | None = None
+    polarization_resonance: dict[str, Any] | None = None
+    double_resonance_scan: dict[str, Any] | None = None
     bk_analysis: dict[str, Any] | None = None
 
 
@@ -244,6 +250,12 @@ def build_crystal_simulation_result(
     context: CrystalContext,
     phase_matching: dict[str, Any],
     mode_matching: ModeMatchingResult,
+    phase_matching_operating_point: dict[str, Any] | None = None,
+    double_resonance_operating_point: dict[str, Any] | None = None,
+    selected_operating_point_mode: str | None = None,
+    selected_operating_point: dict[str, Any] | None = None,
+    polarization_resonance: dict[str, Any] | None = None,
+    double_resonance_scan: dict[str, Any] | None = None,
     bk_analysis: dict[str, Any] | None = None,
 ) -> CrystalSimulationResult:
     """Build the structured crystal workflow result."""
@@ -251,8 +263,73 @@ def build_crystal_simulation_result(
         context=context,
         phase_matching=phase_matching,
         mode_matching=mode_matching,
+        phase_matching_operating_point=phase_matching_operating_point,
+        double_resonance_operating_point=double_resonance_operating_point,
+        selected_operating_point_mode=selected_operating_point_mode,
+        selected_operating_point=selected_operating_point,
+        polarization_resonance=polarization_resonance,
+        double_resonance_scan=double_resonance_scan,
         bk_analysis=bk_analysis,
     )
+
+
+def build_phase_matching_operating_point(
+    phase_matching: dict[str, Any],
+    resonance_diagnostic: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Build the phase-matching operating point candidate."""
+    resonance = resonance_diagnostic
+    if resonance is None:
+        return None
+
+    return {
+        "temperature_K": float(phase_matching["T_best_K"][0]),
+        "phase_matching_power_factor": float(phase_matching["pm_power_best"][0]),
+        "signal_axis": resonance["signal_axis"],
+        "idler_axis": resonance["idler_axis"],
+        "n_signal": float(resonance["n_signal"]),
+        "n_idler": float(resonance["n_idler"]),
+        "wrapped_phase_mismatch_rad": float(resonance["delta_phi_wrapped_rad"]),
+        "is_double_resonant": bool(resonance["is_double_resonant"]),
+    }
+
+
+def build_double_resonance_operating_point(double_resonance_scan: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Build the double-resonance operating point candidate."""
+    scan = double_resonance_scan
+    if scan is None:
+        return None
+
+    return {
+        "temperature_K": float(scan["best_temperature_K"]),
+        "crystal_length_m": float(scan["best_crystal_length_m"]),
+        "wrapped_phase_mismatch_rad": float(scan["best_delta_phi_wrapped_rad"]),
+        "abs_wrapped_phase_mismatch_rad": float(scan["best_abs_delta_phi_wrapped_rad"]),
+        "is_double_resonant": bool(scan["best_is_double_resonant"]),
+    }
+
+
+def select_crystal_operating_point(
+    mode: str,
+    phase_matching_operating_point: dict[str, Any] | None,
+    double_resonance_operating_point: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Return the active crystal operating point for one explicit selection mode."""
+    normalized_mode = str(mode).strip().lower()
+    candidates = {
+        "phase_matching": phase_matching_operating_point,
+        "double_resonance": double_resonance_operating_point,
+    }
+    if normalized_mode not in candidates:
+        supported = ", ".join(candidates)
+        raise ValueError(f"Unknown OPERATING_POINT_MODE: {mode}. Supported values: {supported}")
+
+    selected_operating_point = candidates[normalized_mode]
+    if selected_operating_point is None:
+        raise ValueError(
+            f"Requested operating-point mode '{normalized_mode}' is unavailable for this run."
+        )
+    return selected_operating_point
 
 
 def print_crystal_summary(result: CrystalSimulationResult) -> None:
@@ -285,6 +362,48 @@ def print_crystal_summary(result: CrystalSimulationResult) -> None:
     print(f"Focusing parameter xi: {mode.focusing_parameter_xi:.6f}")
     print(f"Boyd-Kleinman factor: {mode.boyd_kleinman_factor:.6f}")
     print(f"Effective nonlinear overlap: {mode.effective_nonlinear_overlap:.6f}")
+
+    phase_matching_operating_point = result.phase_matching_operating_point
+    if phase_matching_operating_point is not None:
+        print("Phase-matching operating point:")
+        print(f"  temperature: {float(phase_matching_operating_point['temperature_K']):.3f} K")
+        print(
+            f"  phase-matching power factor: "
+            f"{float(phase_matching_operating_point['phase_matching_power_factor']):.6f}"
+        )
+        print(
+            f"  axes (signal/idler): {phase_matching_operating_point['signal_axis']} / "
+            f"{phase_matching_operating_point['idler_axis']}"
+        )
+        print(
+            f"  n(signal/idler): {float(phase_matching_operating_point['n_signal']):.6f} / "
+            f"{float(phase_matching_operating_point['n_idler']):.6f}"
+        )
+        print(
+            f"  wrapped phase mismatch: "
+            f"{float(phase_matching_operating_point['wrapped_phase_mismatch_rad']):.6e} rad"
+        )
+        print(f"  double resonant: {bool(phase_matching_operating_point['is_double_resonant'])}")
+
+    double_resonance_operating_point = result.double_resonance_operating_point
+    if double_resonance_operating_point is not None:
+        print("Double-resonance operating point:")
+        print(f"  temperature: {float(double_resonance_operating_point['temperature_K']):.3f} K")
+        print(f"  crystal length: {float(double_resonance_operating_point['crystal_length_m']) * 1e3:.3f} mm")
+        print(
+            f"  wrapped phase mismatch: "
+            f"{float(double_resonance_operating_point['wrapped_phase_mismatch_rad']):.6e} rad"
+        )
+        print(
+            f"  |wrapped phase mismatch|: "
+            f"{float(double_resonance_operating_point['abs_wrapped_phase_mismatch_rad']):.6e} rad"
+        )
+        print(f"  double resonant: {bool(double_resonance_operating_point['is_double_resonant'])}")
+
+    if result.selected_operating_point_mode is not None:
+        print(f"Selected operating point mode: {result.selected_operating_point_mode}")
+    if result.selected_operating_point is not None:
+        print(f"Active operating temperature: {float(result.selected_operating_point['temperature_K']):.3f} K")
 
     if bk_analysis is not None:
         reference = bk_analysis.get("reference", {})
@@ -320,6 +439,18 @@ def _build_crystal_results_payload(result: CrystalSimulationResult) -> dict[str,
         "phase_matching": result.phase_matching,
         "mode_matching": asdict(result.mode_matching),
     }
+    if result.phase_matching_operating_point is not None:
+        payload["phase_matching_operating_point"] = result.phase_matching_operating_point
+    if result.double_resonance_operating_point is not None:
+        payload["double_resonance_operating_point"] = result.double_resonance_operating_point
+    if result.selected_operating_point_mode is not None:
+        payload["selected_operating_point_mode"] = result.selected_operating_point_mode
+    if result.selected_operating_point is not None:
+        payload["selected_operating_point"] = result.selected_operating_point
+    if result.polarization_resonance is not None:
+        payload["polarization_resonance"] = result.polarization_resonance
+    if result.double_resonance_scan is not None:
+        payload["double_resonance_scan"] = result.double_resonance_scan
     if result.bk_analysis is not None:
         payload["boyd_kleinman_analysis"] = result.bk_analysis
     return payload
@@ -343,6 +474,7 @@ def save_crystal_outputs(
     legacy_fig_unused=None,
     results_root: str | Path | None = None,
     fig_bk_optimal=None,
+    fig_double_resonance_scan=None,
 ) -> dict[str, str]:
     """Save crystal JSON and plots under ``results/<geometry>/crystal/``."""
     # Backward compatibility:
@@ -385,6 +517,7 @@ def save_crystal_outputs(
     qpm_path = result_dir / "qpm_length_poling_map.png"
     bk_path = result_dir / "boyd_kleinman_analysis.png"
     bk_optimal_path = result_dir / "boyd_kleinman_analysis_optimal.png"
+    double_resonance_scan_path = result_dir / "double_resonance_scan.png"
     old_phase_path = result_dir / "phase_matching_scan.png"
     old_mode_path = result_dir / "mode_matching_summary.png"
 
@@ -411,6 +544,8 @@ def save_crystal_outputs(
         fig_bk.savefig(bk_path, dpi=300, bbox_inches="tight")
     if fig_bk_optimal is not None:
         fig_bk_optimal.savefig(bk_optimal_path, dpi=300, bbox_inches="tight")
+    if fig_double_resonance_scan is not None:
+        fig_double_resonance_scan.savefig(double_resonance_scan_path, dpi=300, bbox_inches="tight")
 
     outputs = {
         "result_dir": _repo_relative(result_dir),
@@ -427,6 +562,8 @@ def save_crystal_outputs(
         outputs["mode_matching_summary_png"] = bk_relpath
     if fig_bk_optimal is not None:
         outputs["boyd_kleinman_analysis_optimal_png"] = _repo_relative(bk_optimal_path)
+    if fig_double_resonance_scan is not None:
+        outputs["double_resonance_scan_png"] = _repo_relative(double_resonance_scan_path)
     return outputs
 
 
@@ -438,6 +575,9 @@ __all__ = [
     "compute_design_poling_period",
     "compute_crystal_mode_matching",
     "compute_boyd_kleinman_analysis",
+    "build_phase_matching_operating_point",
+    "build_double_resonance_operating_point",
+    "select_crystal_operating_point",
     "build_crystal_simulation_result",
     "build_crystal_simulation_output",
     "print_crystal_summary",

@@ -21,7 +21,7 @@ from pathlib import Path
 
 # Support both package execution and direct interactive execution.
 try:
-    from .opo_plotter import plot_opo_spectrum_summary
+    from .opo_plotter import plot_opo_resonance_diagnostic, plot_opo_spectrum_summary
     from .opo_workflow import (
         build_opo_simulation_output,
         build_opo_simulation_result,
@@ -36,7 +36,7 @@ except ImportError:
     import sys
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from opo.opo_plotter import plot_opo_spectrum_summary
+    from opo.opo_plotter import plot_opo_resonance_diagnostic, plot_opo_spectrum_summary
     from opo.opo_workflow import (
         build_opo_simulation_output,
         build_opo_simulation_result,
@@ -52,7 +52,7 @@ except ImportError:
 # %%
 # Simulation configuration
 
-GEOMETRY = "bowtie"
+GEOMETRY = "monolithic"
 
 CAVITY_OUTPUT_PATH = None
 CRYSTAL_OUTPUT_PATH = None
@@ -60,14 +60,14 @@ SAVE_OUTPUTS = True
 
 # Minimal below-threshold degenerate OPO configuration.
 OPO_CONFIG = {
-    "pump_power_W": 25e-3,
+    "pump_power_W": 2e-3,
     "threshold_power_W": 100e-3,
-    "signal_wavelength_m": 1550e-9,
+    "signal_wavelength_m": 1540e-9,
     "pump_wavelength_m": 775e-9,
     "analysis_sideband_Hz": 5e6,
     "analysis_span_Hz": (1e5, 20e6),
     "n_analysis_points": 400,
-    "detection_efficiency": 0.95,
+    "detection_efficiency": 0.86,
     "lo_phase_rad": 1.0,
 }
 
@@ -128,6 +128,11 @@ output = build_opo_simulation_output(result)
 # Generate plots
 
 fig_spectrum = plot_opo_spectrum_summary(output["results"]["spectrum"])
+fig_resonance_diagnostic = plot_opo_resonance_diagnostic(
+    output["results"]["spectrum"],
+    model=output["results"]["model"],
+    crystal_results=context.crystal_data.get("results", {}),
+)
 
 
 # %%
@@ -135,8 +140,15 @@ fig_spectrum = plot_opo_spectrum_summary(output["results"]["spectrum"])
 
 outputs_info = None
 if SAVE_OUTPUTS:
-    outputs_info = save_opo_outputs(GEOMETRY, output, fig_spectrum)
+    outputs_info = save_opo_outputs(
+        GEOMETRY,
+        output,
+        fig_spectrum,
+        fig_resonance_diagnostic=fig_resonance_diagnostic,
+    )
     print(f"Saved OPO output to: {outputs_info['opo_output_json']}")
     print(f"Saved OPO spectrum plot to: {outputs_info['opo_squeezing_spectrum_png']}")
+    if "opo_resonance_diagnostic_png" in outputs_info:
+        print(f"Saved OPO resonance diagnostic plot to: {outputs_info['opo_resonance_diagnostic_png']}")
 
 # %%

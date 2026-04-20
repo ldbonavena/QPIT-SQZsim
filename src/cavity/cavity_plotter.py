@@ -46,8 +46,14 @@ def print_geometry_ascii(geometry: str) -> None:
             "   -----(---- air ----[###)----->\n"
             "         <-- L_air -->"
         )
+    elif geometry == "monolithic":
+        print(
+            "   coated planar face      curved coated face\n"
+            "   -----[###############)----->\n"
+            "         <-- crystal -->"
+        )
     else:
-        raise ValueError("geometry must be 'bowtie', 'linear', 'triangle', or 'hemilithic'")
+        raise ValueError("geometry must be 'bowtie', 'linear', 'triangle', 'hemilithic', or 'monolithic'")
 
 
 class CavityPlotter:
@@ -155,8 +161,18 @@ class CavityPlotter:
             plt.ylabel(y_label or "RoC [mm]")
             plt.title(title or "Hemilithic cavity stability (|m|<1)")
 
+        elif self.geometry == "monolithic":
+            crystal_scan = np.arange(0.5e-3, 40e-3, 0.25e-3)
+            roc_scan = np.arange(2e-3, 150e-3, 0.5e-3)
+            mesh_crystal, mesh_roc = np.meshgrid(crystal_scan, roc_scan)
+            stable_map = np.abs(estimate_m_factor_s(mesh_roc, mesh_crystal, n_crystal)) < 1
+            plt.contourf(mesh_crystal * 1e3, mesh_roc * 1e3, stable_map)
+            plt.xlabel(x_label or "Crystal length [mm]")
+            plt.ylabel(y_label or "Curved facet RoC [mm]")
+            plt.title(title or "Monolithic cavity stability (|m|<1)")
+
         else:
-            raise ValueError("geometry must be 'bowtie', 'linear', 'triangle', or 'hemilithic'")
+            raise ValueError("geometry must be 'bowtie', 'linear', 'triangle', 'hemilithic', or 'monolithic'")
 
         plt.colorbar(label="stable")
         plt.grid(True)
@@ -221,8 +237,19 @@ class CavityPlotter:
             plt.ylabel(y_label or "RoC [mm]")
             plt.title(title or "Hemilithic cavity waist map")
 
+        elif self.geometry == "monolithic":
+            crystal_scan = np.arange(0.5e-3, 40e-3, 0.25e-3)
+            roc_scan = np.arange(2e-3, 150e-3, 0.5e-3)
+            mesh_crystal, mesh_roc = np.meshgrid(crystal_scan, roc_scan)
+            q = estimate_q_sagittal(mesh_roc, mesh_crystal, n_crystal)
+            waist_um = beam_waist_from_q(q, wavelength, refractive_index=n_crystal) * 1e6
+            plt.contourf(mesh_crystal * 1e3, mesh_roc * 1e3, waist_um)
+            plt.xlabel(x_label or "Crystal length [mm]")
+            plt.ylabel(y_label or "Curved facet RoC [mm]")
+            plt.title(title or "Monolithic cavity waist map")
+
         else:
-            raise ValueError("geometry must be 'bowtie', 'linear', 'triangle', or 'hemilithic'")
+            raise ValueError("geometry must be 'bowtie', 'linear', 'triangle', 'hemilithic', or 'monolithic'")
 
         plt.colorbar(label="waist [um]")
         return fig

@@ -1,10 +1,11 @@
-"""Plotting utilities for crystal phase-matching and mode-matching outputs."""
+"""Plotting utilities for crystal phase-matching and resonance diagnostics."""
 
 from __future__ import annotations
 
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
 import numpy as np
+from typing import Any
 
 from .crystal_boyd_kleinman import boyd_kleinman_efficiency
 
@@ -439,6 +440,77 @@ def plot_boyd_kleinman_analysis(bk_data: dict, figure_title: str | None = None):
     return fig
 
 
+def plot_double_resonance_scan(scan_data: dict[str, Any]):
+    """Plot the crystal-side double-resonance mismatch scan.
+
+    This is a diagnostic heatmap of the wrapped signal-idler cavity phase
+    mismatch, not a full cavity transfer calculation.
+    """
+    temperature_grid_K = np.asarray(scan_data["temperature_grid_K"], dtype=float)
+    crystal_length_grid_m = np.asarray(scan_data["crystal_length_grid_m"], dtype=float)
+    abs_delta_phi_wrapped_rad = np.asarray(scan_data["abs_delta_phi_wrapped_rad"], dtype=float)
+
+    fig, ax = plt.subplots(figsize=(9.0, 6.3))
+    image = ax.imshow(
+        abs_delta_phi_wrapped_rad,
+        origin="lower",
+        aspect="auto",
+        extent=[
+            float(temperature_grid_K[0]),
+            float(temperature_grid_K[-1]),
+            float(crystal_length_grid_m[0] * 1e3),
+            float(crystal_length_grid_m[-1] * 1e3),
+        ],
+        cmap="viridis",
+    )
+
+    best_temperature_K = float(scan_data["best_temperature_K"])
+    best_crystal_length_mm = float(scan_data["best_crystal_length_m"]) * 1e3
+    best_abs_delta_phi_wrapped_rad = float(scan_data["best_abs_delta_phi_wrapped_rad"])
+
+    ax.scatter(
+        best_temperature_K,
+        best_crystal_length_mm,
+        s=80,
+        marker="o",
+        facecolor="#d1495b",
+        edgecolor="white",
+        linewidth=1.0,
+        zorder=4,
+        label="Best scan point",
+    )
+    ax.annotate(
+        (
+            f"Best point\nT = {best_temperature_K:.2f} K\n"
+            f"L = {best_crystal_length_mm:.3f} mm\n"
+            f"|Δφ| = {best_abs_delta_phi_wrapped_rad:.3e} rad"
+        ),
+        xy=(best_temperature_K, best_crystal_length_mm),
+        xytext=(10, 10),
+        textcoords="offset points",
+        ha="left",
+        va="bottom",
+        fontsize=9,
+        bbox={"facecolor": "white", "edgecolor": "#cccccc", "alpha": 0.92, "boxstyle": "round,pad=0.25"},
+    )
+
+    ax.set_xlabel("Temperature [K]")
+    ax.set_ylabel("Crystal length [mm]")
+    ax.set_title(r"Double-resonance diagnostic: $|\Delta\phi_{\mathrm{wrapped}}|$", pad=10)
+    ax.set_facecolor("white")
+    ax.grid(True, color="#b0b0b0", alpha=0.35, linewidth=0.7)
+    ax.tick_params(labelsize=10)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.legend(frameon=True, facecolor="white", edgecolor="#cccccc", fontsize=9, loc="upper right")
+
+    cbar = fig.colorbar(image, ax=ax, pad=0.02)
+    cbar.set_label(r"$|\Delta\phi_{\mathrm{wrapped}}|$ [rad]")
+    cbar.ax.tick_params(labelsize=10)
+    fig.tight_layout()
+    return fig
+
+
 __all__ = [
     "plot_phase_matching_temperature_scan",
     "plot_mode_matching_summary",
@@ -447,4 +519,5 @@ __all__ = [
     "plot_bk_master_map_sigma_xi",
     "plot_qpm_length_poling_map",
     "plot_boyd_kleinman_analysis",
+    "plot_double_resonance_scan",
 ]

@@ -29,7 +29,7 @@ from cavity_analysis import (
 from cavity_plotter import print_geometry_ascii
 
 
-_GEOMETRY_ERROR = "GEOMETRY must be 'bowtie', 'linear', 'triangle', or 'hemilithic'"
+_GEOMETRY_ERROR = "GEOMETRY must be 'bowtie', 'linear', 'triangle', 'hemilithic', or 'monolithic'"
 
 
 @dataclass(frozen=True)
@@ -75,7 +75,7 @@ class CavitySimulationResult:
 
 
 def _validate_geometry(geometry: str) -> None:
-    if geometry not in {"bowtie", "linear", "triangle", "hemilithic"}:
+    if geometry not in {"bowtie", "linear", "triangle", "hemilithic", "monolithic"}:
         raise ValueError(_GEOMETRY_ERROR)
 
 
@@ -113,6 +113,12 @@ def print_geometry_info(geometry: str) -> None:
             " (2) air gap [mm]",
             " (3) mirror radius of curvature [mm]",
         ),
+        "monolithic": (
+            "Monolithic geometry parameters:",
+            " (0) crystal length [mm]",
+            " (1) crystal refractive index",
+            " (2) curved facet radius of curvature [mm]",
+        ),
     }
     _validate_geometry(geometry)
     for line in geometry_parameter_lines[geometry]:
@@ -142,6 +148,18 @@ def build_geometry_estimators(geometry: str, parameters: dict[str, Any]) -> Geom
             estimate_q_tangential=make_q_estimator("triangle", plane="tangential"),
             mesh_x=parameters["mesh_triangle_width"],
             mesh_y=parameters["mesh_triangle_height"],
+        )
+
+    if geometry == "monolithic":
+        estimator = make_m_factor_estimator("monolithic")
+        q_estimator = make_q_estimator("monolithic")
+        return GeometryEstimators(
+            estimate_m_factor_s=estimator,
+            estimate_m_factor_t=estimator,
+            estimate_q_sagittal=q_estimator,
+            estimate_q_tangential=q_estimator,
+            mesh_x=None,
+            mesh_y=None,
         )
 
     m_estimator = make_m_factor_estimator(geometry)
@@ -368,6 +386,40 @@ def _evaluate_hemilithic_operating_point(
     )
 
 
+def _evaluate_monolithic_operating_point(
+    context: CavityContext,
+    point_parameters: dict[str, Any],
+) -> CavityOperatingPoint:
+    parameters = context.parameters
+    estimators = context.estimators
+
+    crystal_length_val = point_parameters.get("monolithic_crystal_length_m", parameters["f_crystal_length"])
+    radius_of_curvature_val = point_parameters.get("single_point_RoC_m", parameters["f_RoC"])
+    m_val = float(
+        estimators.estimate_m_factor_s(
+            radius_of_curvature_val,
+            crystal_length_val,
+            parameters["f_n_crystal"],
+        )
+    )
+    qs = complex(
+        estimators.estimate_q_sagittal(
+            radius_of_curvature_val,
+            crystal_length_val,
+            parameters["f_n_crystal"],
+        )
+    )
+
+    return CavityOperatingPoint(
+        qs=qs,
+        qt=qs,
+        m_factor={"sagittal": m_val, "tangential": m_val},
+        geometry_values={"crystal_length_m": float(crystal_length_val), "RoC_m": float(radius_of_curvature_val)},
+        cavity_length=float(2 * crystal_length_val),
+        optical_crystal_length=float(2 * crystal_length_val),
+    )
+
+
 def compute_cavity_operating_point(context: CavityContext, point_parameters: dict[str, Any]) -> CavityOperatingPoint:
     """Evaluate one representative cavity operating point for the selected geometry."""
     geometry = context.geometry
@@ -379,7 +431,9 @@ def compute_cavity_operating_point(context: CavityContext, point_parameters: dic
         return _evaluate_linear_operating_point(context, point_parameters)
     if geometry == "triangle":
         return _evaluate_triangle_operating_point(context, point_parameters)
-    return _evaluate_hemilithic_operating_point(context, point_parameters)
+    if geometry == "hemilithic":
+        return _evaluate_hemilithic_operating_point(context, point_parameters)
+    return _evaluate_monolithic_operating_point(context, point_parameters)
 
 
 def evaluate_single_point(
@@ -534,6 +588,16 @@ def print_single_point_summary(geometry: str, result: CavityOperatingPoint | dic
         print(f"m = {m['sagittal']:.6f} (stable if |m|<1)")
         _print_instability_warning(m)
         print(f"q parameter at crystal input face: {qs:.5f}")
+        return
+
+    if geometry == "monolithic":
+        print(
+            f"Monolithic cavity parameters: crystal length = {g['crystal_length_m']*1e3:.3f} mm, "
+            f"curved facet RoC = {g['RoC_m']*1e3:.3f} mm"
+        )
+        print(f"m = {m['sagittal']:.6f} (stable if |m|<1)")
+        _print_instability_warning(m)
+        print(f"q parameter at planar coated facet: {qs:.5f}")
         return
 
     raise ValueError(_GEOMETRY_ERROR)

@@ -43,8 +43,8 @@ from cavity_workflow import (
 # %%
 # Geometry selection
 
-# Choose: "bowtie", "linear", "triangle", or "hemilithic"
-GEOMETRY = "bowtie"
+# Choose: "bowtie", "linear", "triangle", "hemilithic", or "monolithic"
+GEOMETRY = "monolithic"
 
 # %%
 
@@ -52,14 +52,13 @@ GEOMETRY = "bowtie"
 
 c_num = 299792458.0
 
-f_crystal_length = 16e-3
-f_n_crystal = 1.82
-f_RoC = 50e-3
-f_wavelength = 1550e-9
+f_crystal_length = 4.097e-3
+f_n_crystal = 1.78
+f_RoC = 10e-3
+f_wavelength = 1540e-9
 
-# Squeezing/OPO parameters
-f_T_ext = 0.10
-f_L_rt = 0.01
+f_T_ext = 1.0 - 0.954
+f_L_rt = 1e-3
 f_detuning_Hz = 0.0
 
 # Bow-tie parameters
@@ -137,7 +136,7 @@ fig_waist = plotter.make_waist_plot(
 
 # Explicit single-point selections used for the detailed evaluation step.
 single_point_parameters = {
-    "single_point_RoC_m": 50e-3,
+    "single_point_RoC_m": 10e-3,
     "bowtie_short_axis_m": 68e-3,
     "bowtie_long_axis_m": 90e-3,
     "bowtie_theta_AOI_rad": 6 * np.pi / 180.0,
@@ -145,6 +144,7 @@ single_point_parameters = {
     "triangle_width_m": 80e-3,
     "triangle_height_m": 30e-3,
     "hemilithic_air_gap_m": 20e-3,
+    "monolithic_crystal_length_m": f_crystal_length,
 }
 
 single_point = compute_cavity_operating_point(context, single_point_parameters)

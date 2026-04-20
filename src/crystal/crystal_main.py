@@ -30,12 +30,17 @@ try:
         resolve_phase_matching_configuration,
     )
     from .crystal_mode_matching import build_mode_matching_context_from_cavity_output
+    from .crystal_double_resonance_scan import compute_double_resonance_scan
+    from .crystal_polarization_resonance import compute_polarization_resonance_diagnostic
     from .crystal_plotter import (
         plot_bk_master_map_sigma_xi,
         plot_boyd_kleinman_analysis,
+        plot_double_resonance_scan,
         plot_qpm_length_poling_map,
     )
     from .crystal_workflow import (
+        build_double_resonance_operating_point,
+        build_phase_matching_operating_point,
         build_crystal_simulation_output,
         build_crystal_simulation_result,
         compute_boyd_kleinman_analysis,
@@ -44,6 +49,7 @@ try:
         compute_crystal_phase_matching,
         load_cavity_context_for_crystal,
         print_crystal_summary,
+        select_crystal_operating_point,
         save_crystal_outputs,
     )
 except ImportError:
@@ -57,12 +63,17 @@ except ImportError:
         resolve_phase_matching_configuration,
     )
     from crystal.crystal_mode_matching import build_mode_matching_context_from_cavity_output
+    from crystal.crystal_double_resonance_scan import compute_double_resonance_scan
+    from crystal.crystal_polarization_resonance import compute_polarization_resonance_diagnostic
     from crystal.crystal_plotter import (
         plot_bk_master_map_sigma_xi,
         plot_boyd_kleinman_analysis,
+        plot_double_resonance_scan,
         plot_qpm_length_poling_map,
     )
     from crystal.crystal_workflow import (
+        build_double_resonance_operating_point,
+        build_phase_matching_operating_point,
         build_crystal_simulation_output,
         build_crystal_simulation_result,
         compute_boyd_kleinman_analysis,
@@ -71,6 +82,7 @@ except ImportError:
         compute_crystal_phase_matching,
         load_cavity_context_for_crystal,
         print_crystal_summary,
+        select_crystal_operating_point,
         save_crystal_outputs,
     )
 
@@ -101,28 +113,50 @@ __all__ = [
 # %%
 # Simulation configuration
 
-GEOMETRY = "bowtie"  # Cavity geometry used to load upstream cavity results (e.g. waist, kappa, cavity output JSON)
+GEOMETRY = "monolithic"  # Cavity geometry used to load upstream cavity results (e.g. waist, kappa, cavity output JSON)
 # Multiple literature models can exist, but one global selection is enforced per run.
 CRYSTAL_MODEL = "Kato2002"  # Refractive-index model used consistently for all crystal axes. Choices: "Kato2002", "Fan1987", "Konig2004"
 
 WAVELENGTH_P_M = 775e-9   # Pump wavelength [m]
-WAVELENGTH_S_M = 1550e-9  # Signal wavelength [m]
-WAVELENGTH_I_M = 1550e-9  # Idler wavelength [m] (equal to signal in the degenerate case)
+WAVELENGTH_S_M = 1540e-9  # Signal wavelength [m]
+WAVELENGTH_I_M = 1560e-9  # Idler wavelength [m]
 
-PHASE_MATCHING_MODE = "design"  # "design" derives the QPM period from wavelengths + temperature; "analysis" uses ANALYSIS_LAMBDA0_M directly
+PHASE_MATCHING_MODE = "design"  
 PHASE_MATCHING_TYPE = "type_II"  # allowed: "type_0", "type_I", "type_II"
-DESIGN_TEMPERATURE_K = 318.15   # Design temperature [K] used to derive the QPM period in design mode
-ANALYSIS_LAMBDA0_M = 27.7e-6    # QPM poling period Λ [m] used only when PHASE_MATCHING_MODE = "analysis"
+DESIGN_TEMPERATURE_K = 317.725   
+ANALYSIS_LAMBDA0_M = 45.35e-6   # Poling period Λ [m]
 
-T_MIN_K = 280.0  # Minimum temperature of the phase-matching scan [K]
+T_MIN_K = 300.0  # Minimum temperature of the phase-matching scan [K]
 T_MAX_K = 340.0  # Maximum temperature of the phase-matching scan [K]
-N_T = 201        # Number of temperature points in the scan
+N_T = 401        # Number of temperature points in the scan
 
 CAVITY_OUTPUT_PATH = None  # Optional manual override for cavity output path (None = use default results/<geometry>/cavity/)
 T0_K = 293.15              # Reference temperature [K] for thermo-optic / thermal-expansion models
-ALPHA_PER_K = 0.0          # Linear thermal expansion coefficient [1/K]
+ALPHA_PER_K = 6.7e-6       # Approximate linear thermal expansion coefficient [1/K] for KTP-family crystals
 QPM_ORDER_M = 1            # Quasi-phase-matching order m (m = 1 is first-order QPM)
 SAVE_OUTPUTS = True        # If True, save JSON results and plots to disk
+
+# Plot controls (enable individually)
+ENABLE_PLOT_BK_MASTER = True
+ENABLE_PLOT_BK = True
+ENABLE_PLOT_BK_OPTIMAL = False
+ENABLE_PLOT_DOUBLE_RESONANCE = True
+ENABLE_PLOT_QPM = False
+
+ENABLE_DOUBLE_RESONANCE_SCAN = True
+DOUBLE_RESONANCE_T_MIN_K = 315.0
+DOUBLE_RESONANCE_T_MAX_K = 320.0
+DOUBLE_RESONANCE_N_T = 201
+DOUBLE_RESONANCE_L_MIN_M = 4.0e-3
+DOUBLE_RESONANCE_L_MAX_M = 4.2e-3
+DOUBLE_RESONANCE_N_L = 161
+
+
+# Select crystal operating point used for downstream calculations.
+# "phase_matching"   → maximize nonlinear conversion (Δk ≈ 0)
+# "double_resonance" → enforce signal/idler resonance (Δφ_wrapped ≈ 0)
+# Note: these do not generally coincide (especially for Type II).
+OPERATING_POINT_MODE = "double_resonance"
 
 
 def _build_temperature_index_function(axis_model, wavelength_m: float):
@@ -215,13 +249,66 @@ phase["d_eff_pm_per_V"] = d_eff_config.d_eff_pm_per_V
 phase["d_eff_notes"] = list(d_eff_config.notes)
 
 # %%
-# Determine operating temperature and refractive index for mode matching
+# Compute the resonance diagnostic at the phase-matching operating point
 
-phase_temperature_for_mode_matching_K = float(phase["T_best_K"][0])
+phase_matching_temperature_K = float(phase["T_best_K"][0])
+phase_matching_resonance_diagnostic = compute_polarization_resonance_diagnostic(
+    cavity_data=context.cavity_data,
+    temperature_K=phase_matching_temperature_K,
+    signal_axis=phase_config.signal_axis,
+    idler_axis=phase_config.idler_axis,
+    wavelength_s_m=WAVELENGTH_S_M,
+    wavelength_i_m=WAVELENGTH_I_M,
+    n_s_of_lambda_T=n_s_of_lambda_T,
+    n_i_of_lambda_T=n_i_of_lambda_T,
+)
+
+# %%
+# Compute double-resonance scan diagnostic
+
+double_resonance_scan = None
+if ENABLE_DOUBLE_RESONANCE_SCAN:
+    double_resonance_scan = compute_double_resonance_scan(
+        cavity_data=context.cavity_data,
+        signal_axis=phase_config.signal_axis,
+        idler_axis=phase_config.idler_axis,
+        wavelength_s_m=WAVELENGTH_S_M,
+        wavelength_i_m=WAVELENGTH_I_M,
+        n_s_of_lambda_T=n_s_of_lambda_T,
+        n_i_of_lambda_T=n_i_of_lambda_T,
+        temperature_min_K=DOUBLE_RESONANCE_T_MIN_K,
+        temperature_max_K=DOUBLE_RESONANCE_T_MAX_K,
+        n_temperature=DOUBLE_RESONANCE_N_T,
+        crystal_length_min_m=DOUBLE_RESONANCE_L_MIN_M,
+        crystal_length_max_m=DOUBLE_RESONANCE_L_MAX_M,
+        n_crystal_length=DOUBLE_RESONANCE_N_L,
+    )
+
+# %%
+# Build candidate operating points and select the active one
+
+phase_matching_operating_point = build_phase_matching_operating_point(
+    phase_matching=phase,
+    resonance_diagnostic=phase_matching_resonance_diagnostic,
+)
+double_resonance_operating_point = build_double_resonance_operating_point(double_resonance_scan)
+selected_operating_point = select_crystal_operating_point(
+    OPERATING_POINT_MODE,
+    phase_matching_operating_point=phase_matching_operating_point,
+    double_resonance_operating_point=double_resonance_operating_point,
+)
+
+# %%
+# Determine active operating temperature for downstream single-point crystal use
+
+# A selected crystal length from the double-resonance scan is kept as metadata
+# in the operating-point blocks, but the loaded cavity context is not mutated
+# here; only the active temperature is propagated downstream in this workflow.
+active_operating_temperature_K = float(selected_operating_point["temperature_K"])
 mode_matching_n_crystal = float(
     signal_axis_model(
         WAVELENGTH_S_M,
-        phase_temperature_for_mode_matching_K,
+        active_operating_temperature_K,
     )
 )
 
@@ -263,6 +350,12 @@ result = build_crystal_simulation_result(
     context=context,
     phase_matching=phase,
     mode_matching=mode,
+    phase_matching_operating_point=phase_matching_operating_point,
+    double_resonance_operating_point=double_resonance_operating_point,
+    selected_operating_point_mode=OPERATING_POINT_MODE,
+    selected_operating_point=selected_operating_point,
+    polarization_resonance=phase_matching_resonance_diagnostic,
+    double_resonance_scan=double_resonance_scan,
     bk_analysis=bk_data,
 )
 
@@ -284,6 +377,7 @@ output["inputs"]["signal_axis"] = phase_config.signal_axis
 output["inputs"]["idler_axis"] = phase_config.idler_axis
 output["inputs"]["d_eff_pm_per_V"] = d_eff_config.d_eff_pm_per_V
 output["inputs"]["d_eff_notes"] = list(d_eff_config.notes)
+output["inputs"]["operating_point_mode"] = OPERATING_POINT_MODE
 output["inputs"]["design_temperature_K"] = DESIGN_TEMPERATURE_K if PHASE_MATCHING_MODE == "design" else None
 output["inputs"]["Lambda0_m"] = Lambda0_m
 if design_poling is not None:
@@ -292,27 +386,42 @@ if design_poling is not None:
 # %%
 # Generate plots
 
-# BK figures: operating plot should be blue, optimal plot should be green.
-fig_bk_master = plot_bk_master_map_sigma_xi(
-    bk_data,
-    operating_point={
-        "xi_reference": bk_data["reference"]["xi_reference"],
-        "sigma_reference": bk_data["reference"]["sigma_reference"],
-    },
-)
-fig_qpm = plot_qpm_length_poling_map(bk_data)
+ # BK figures: operating plot should be blue, optimal plot should be green.
+fig_bk_master = None
+fig_bk = None
+fig_bk_optimal = None
+fig_double_resonance = None
+fig_qpm = None
+
 bk_analysis_operating = bk_data.get("bk_analysis_operating", bk_data)
 bk_analysis_optimal = bk_data.get("bk_analysis_optimal")
-fig_bk = plot_boyd_kleinman_analysis(
-    bk_analysis_operating,
-    figure_title="BK Analysis Around Operating Point",
-)
-fig_bk_optimal = None
-if bk_analysis_optimal is not None:
+
+if ENABLE_PLOT_BK_MASTER:
+    fig_bk_master = plot_bk_master_map_sigma_xi(
+        bk_data,
+        operating_point={
+            "xi_reference": bk_data["reference"]["xi_reference"],
+            "sigma_reference": bk_data["reference"]["sigma_reference"],
+        },
+    )
+
+if ENABLE_PLOT_BK:
+    fig_bk = plot_boyd_kleinman_analysis(
+        bk_analysis_operating,
+        figure_title="BK Analysis Around Operating Point",
+    )
+
+if ENABLE_PLOT_BK_OPTIMAL and bk_analysis_optimal is not None:
     fig_bk_optimal = plot_boyd_kleinman_analysis(
         bk_analysis_optimal,
         figure_title="BK Analysis Around Optimal BK Point",
     )
+
+if ENABLE_PLOT_DOUBLE_RESONANCE and double_resonance_scan is not None:
+    fig_double_resonance = plot_double_resonance_scan(double_resonance_scan)
+
+if ENABLE_PLOT_QPM:
+    fig_qpm = plot_qpm_length_poling_map(bk_data)
 
 # %%
 # Save outputs
@@ -325,14 +434,18 @@ if SAVE_OUTPUTS:
         fig_bk_master=fig_bk_master,
         fig_qpm=fig_qpm,
         fig_bk=fig_bk,
+        fig_double_resonance_scan=fig_double_resonance,
         fig_bk_optimal=fig_bk_optimal,
     )
     print(f"Saved crystal output to: {outputs_info['crystal_output_json']}")
     print(f"Saved BK master map to: {outputs_info['boyd_kleinman_master_map_png']}")
-    print(f"Saved QPM / poling-length map to: {outputs_info['qpm_length_poling_map_png']}")
     print(f"Saved BK analysis plot to: {outputs_info['boyd_kleinman_analysis_png']}")
     if "boyd_kleinman_analysis_optimal_png" in outputs_info:
         print(f"Saved optimal BK analysis plot to: {outputs_info['boyd_kleinman_analysis_optimal_png']}")
+    if "double_resonance_scan_png" in outputs_info:
+        print(f"Saved double-resonance scan plot to: {outputs_info['double_resonance_scan_png']}")
+    if "qpm_length_poling_map_png" in outputs_info:
+        print(f"Saved QPM / poling-length map to: {outputs_info['qpm_length_poling_map_png']}")
 
 # %%
 # Build mode-matching context

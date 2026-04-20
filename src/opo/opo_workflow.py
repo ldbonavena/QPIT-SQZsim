@@ -194,6 +194,7 @@ def save_opo_outputs(
     geometry: str,
     output: dict[str, Any],
     fig_spectrum,
+    fig_resonance_diagnostic=None,
     results_root: str | Path | None = None,
 ) -> dict[str, str]:
     """Save OPO JSON and plots under ``results/<geometry>/opo/``."""
@@ -203,6 +204,7 @@ def save_opo_outputs(
 
     json_path = result_dir / "opo_simulation_output.json"
     spectrum_path = result_dir / "opo_squeezing_spectrum.png"
+    resonance_diagnostic_path = result_dir / "opo_resonance_diagnostic.png"
 
     def _repo_relative(path: Path) -> str:
         try:
@@ -215,6 +217,8 @@ def save_opo_outputs(
         "opo_output_json": _repo_relative(json_path),
         "opo_squeezing_spectrum_png": _repo_relative(spectrum_path),
     }
+    if fig_resonance_diagnostic is not None:
+        outputs_info["opo_resonance_diagnostic_png"] = _repo_relative(resonance_diagnostic_path)
     output["outputs"] = outputs_info
 
     with json_path.open("w", encoding="utf-8") as f:
@@ -222,6 +226,8 @@ def save_opo_outputs(
 
     if fig_spectrum is not None:
         fig_spectrum.savefig(spectrum_path, dpi=300, bbox_inches="tight")
+    if fig_resonance_diagnostic is not None:
+        fig_resonance_diagnostic.savefig(resonance_diagnostic_path, dpi=300, bbox_inches="tight")
 
     return outputs_info
 
