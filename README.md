@@ -157,7 +157,7 @@ The crystal results directory now also includes:
 Contains the OPO-layer inputs and derived operating-point / spectrum quantities, including:
 
 - calibration threshold power
-- crystal gain source and nonlinear coupling proxy
+- crystal-resolved nonlinear coupling inputs and sources
 - effective threshold power
 - pump parameter sigma
 - cavity linewidth, escape efficiency, and detuning
@@ -272,9 +272,13 @@ Shared utilities used by both layers live in:
 
 The OPO layer consumes the exported cavity and crystal results and builds a compact below-threshold degenerate OPO model. It uses those upstream results to define a physics-informed operating point, constructs a linearized quadrature Langevin model in the `X/P` basis, and produces frequency-domain squeezing spectra.
 
+The OPO model uses a physics-informed nonlinear coupling derived from the crystal effective nonlinearity (`d_eff`), crystal length, mode overlap, and effective mode area.
+
 Current OPO capabilities include:
 
+- crystal-informed nonlinear coupling using `d_eff`, overlap, and mode size
 - physics-informed threshold modeling using cavity loss and crystal nonlinear coupling
+- a below-threshold degenerate OPO model
 - a 2x2 quadrature Langevin model in the `X/P` basis
 - frequency-dependent squeezing and anti-squeezing spectra
 - homodyne measurement with configurable LO phase via `lo_phase_rad`

@@ -26,6 +26,7 @@ try:
     from .crystal_materials import (
         build_refractive_index_model,
         get_axis_index_function,
+        resolve_effective_nonlinearity,
         resolve_phase_matching_configuration,
     )
     from .crystal_mode_matching import build_mode_matching_context_from_cavity_output
@@ -52,6 +53,7 @@ except ImportError:
     from crystal.crystal_materials import (
         build_refractive_index_model,
         get_axis_index_function,
+        resolve_effective_nonlinearity,
         resolve_phase_matching_configuration,
     )
     from crystal.crystal_mode_matching import build_mode_matching_context_from_cavity_output
@@ -143,6 +145,7 @@ def _build_wavelength_temperature_index_function(axis_model):
 
 refractive_index_model = build_refractive_index_model(CRYSTAL_MODEL)
 phase_config = resolve_phase_matching_configuration(PHASE_MATCHING_TYPE)
+d_eff_config = resolve_effective_nonlinearity(CRYSTAL_MODEL, PHASE_MATCHING_TYPE)
 pump_axis_model = get_axis_index_function(refractive_index_model, phase_config.pump_axis)
 signal_axis_model = get_axis_index_function(refractive_index_model, phase_config.signal_axis)
 idler_axis_model = get_axis_index_function(refractive_index_model, phase_config.idler_axis)
@@ -208,6 +211,8 @@ phase["phase_matching_type"] = phase_config.phase_matching_type
 phase["pump_axis"] = phase_config.pump_axis
 phase["signal_axis"] = phase_config.signal_axis
 phase["idler_axis"] = phase_config.idler_axis
+phase["d_eff_pm_per_V"] = d_eff_config.d_eff_pm_per_V
+phase["d_eff_notes"] = list(d_eff_config.notes)
 
 # %%
 # Determine operating temperature and refractive index for mode matching
@@ -277,6 +282,8 @@ output["inputs"]["phase_matching_type"] = phase_config.phase_matching_type
 output["inputs"]["pump_axis"] = phase_config.pump_axis
 output["inputs"]["signal_axis"] = phase_config.signal_axis
 output["inputs"]["idler_axis"] = phase_config.idler_axis
+output["inputs"]["d_eff_pm_per_V"] = d_eff_config.d_eff_pm_per_V
+output["inputs"]["d_eff_notes"] = list(d_eff_config.notes)
 output["inputs"]["design_temperature_K"] = DESIGN_TEMPERATURE_K if PHASE_MATCHING_MODE == "design" else None
 output["inputs"]["Lambda0_m"] = Lambda0_m
 if design_poling is not None:

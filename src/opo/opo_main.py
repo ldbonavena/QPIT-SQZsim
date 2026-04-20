@@ -135,7 +135,7 @@ fig_spectrum = plot_opo_spectrum_summary(output["results"]["spectrum"])
 
 outputs_info = None
 if SAVE_OUTPUTS:
-    outputs_info = save_opo_outputs(GEOMETRY, output, fig_spectrum, None)
+    outputs_info = save_opo_outputs(GEOMETRY, output, fig_spectrum)
     print(f"Saved OPO output to: {outputs_info['opo_output_json']}")
     print(f"Saved OPO spectrum plot to: {outputs_info['opo_squeezing_spectrum_png']}")
 

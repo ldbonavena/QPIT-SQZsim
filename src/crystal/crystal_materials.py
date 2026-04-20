@@ -105,6 +105,16 @@ class PhaseMatchingConfiguration:
     idler_axis: str
 
 
+@dataclass(frozen=True)
+class EffectiveNonlinearityConfiguration:
+    """Resolved effective nonlinearity for one crystal model and interaction type."""
+
+    crystal_model: str
+    phase_matching_type: str
+    d_eff_pm_per_V: float
+    notes: tuple[str, ...] = ()
+
+
 def central_diff(f: Callable[[float], float], x: float, dx: float) -> float:
     """Return the central finite-difference derivative of ``f`` at ``x``."""
     return (f(x + dx) - f(x - dx)) / (2.0 * dx)
@@ -354,6 +364,22 @@ _PHASE_MATCHING_CONFIGS: dict[str, PhaseMatchingConfiguration] = {
     ),
 }
 
+_COMMON_DEFF_NOTES = (
+    "Effective nonlinearity for future OPO coupling integration.",
+    "Current values are tied to the present axis-based interaction-type model.",
+    "The current type_II value reflects the present model assumptions rather than a full general polarization treatment.",
+)
+
+_COMMON_DEFF_BY_TYPE_PM_PER_V: dict[str, float] = {
+    "type_0": 16.9,
+    "type_i": 3.64,
+    "type_ii": 3.64,
+}
+
+_EFFECTIVE_NONLINEARITY_CONFIGS: dict[str, dict[str, float]] = {
+    model_name: dict(_COMMON_DEFF_BY_TYPE_PM_PER_V) for model_name in SUPPORTED_CRYSTAL_MODELS
+}
+
 
 def supported_crystal_models() -> tuple[str, ...]:
     """Return the supported literature models."""
@@ -390,6 +416,34 @@ def resolve_phase_matching_configuration(phase_matching_type: str) -> PhaseMatch
         raise ValueError(
             f"Unknown phase_matching_type: {phase_matching_type}. Supported values: {supported}"
         ) from exc
+
+
+def resolve_effective_nonlinearity(
+    crystal_model: str,
+    phase_matching_type: str,
+) -> EffectiveNonlinearityConfiguration:
+    """Resolve ``d_eff`` for one crystal model and nonlinear interaction type."""
+    selected_model = _validate_model_name(crystal_model)
+    normalized_type = str(phase_matching_type).lower()
+    if normalized_type not in _PHASE_MATCHING_CONFIGS:
+        supported = ", ".join(_PHASE_MATCHING_CONFIGS)
+        raise ValueError(
+            f"Unknown phase_matching_type: {phase_matching_type}. Supported values: {supported}"
+        )
+
+    try:
+        d_eff_pm_per_V = _EFFECTIVE_NONLINEARITY_CONFIGS[selected_model][normalized_type]
+    except KeyError as exc:
+        raise ValueError(
+            f"No d_eff configured for crystal_model={crystal_model} and phase_matching_type={phase_matching_type}."
+        ) from exc
+
+    return EffectiveNonlinearityConfiguration(
+        crystal_model=selected_model,
+        phase_matching_type=_PHASE_MATCHING_CONFIGS[normalized_type].phase_matching_type,
+        d_eff_pm_per_V=float(d_eff_pm_per_V),
+        notes=_COMMON_DEFF_NOTES,
+    )
 
 
 @lru_cache(maxsize=None)
@@ -441,6 +495,7 @@ __all__ = [
     "LiteratureAxisModelSet",
     "RefractiveIndexModel",
     "PhaseMatchingConfiguration",
+    "EffectiveNonlinearityConfiguration",
     "central_diff",
     "n_sellmeier_um",
     "n_from_model",
@@ -449,6 +504,7 @@ __all__ = [
     "build_refractive_index_model",
     "get_axis_index_function",
     "resolve_phase_matching_configuration",
+    "resolve_effective_nonlinearity",
     "nx",
     "ny",
     "nz",

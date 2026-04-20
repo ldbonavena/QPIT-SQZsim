@@ -1,4 +1,4 @@
-"""Plotting helpers for OPO operating-point and squeezing-spectrum views."""
+"""Plotting helpers for OPO squeezing-spectrum views."""
 
 from __future__ import annotations
 

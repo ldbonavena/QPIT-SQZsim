@@ -42,13 +42,18 @@ class OPOModelResult:
     baseline_threshold_power_W: float
     effective_threshold_power_W: float
     pump_power_W: float
+    d_eff_pm_per_V: float
+    crystal_length_m: float
+    effective_mode_area_m2: float
     # ``nonlinear_coupling_proxy`` is the raw crystal-derived quantity, while
     # ``crystal_gain_factor`` is the threshold-rescaling quantity used by this
     # intermediate operating-point model.
     nonlinear_coupling_proxy: float
+    nonlinear_overlap: float
     effective_nonlinear_coupling: float
     cavity_loss_scale: float
     crystal_gain_source: str
+    d_eff_source: str
     crystal_gain_factor: float
     below_threshold: bool
     escape_efficiency: float
@@ -86,6 +91,8 @@ def derive_opo_quantities(
     mode_matching = crystal_results.get("mode_matching", {})
     bk_analysis = crystal_results.get("boyd_kleinman_analysis", {})
     bk_reference = bk_analysis.get("reference", {})
+    crystal_inputs = crystal_data.get("inputs", {})
+    cavity_inputs = cavity_data.get("inputs", {})
 
     if parameters.threshold_power_W <= 0.0:
         raise ValueError("threshold_power_W must be positive")
@@ -101,20 +108,48 @@ def derive_opo_quantities(
         crystal_gain_source = "fallback_unity"
 
     nonlinear_coupling_proxy = max(float(nonlinear_coupling_proxy_raw), 1e-12)
+    # In the current intermediate model, ``nonlinear_overlap`` stores the
+    # overlap-like crystal coupling factor used by the OPO layer, even when it
+    # comes from fallback proxy sources such as the BK reference factor.
+    nonlinear_overlap = nonlinear_coupling_proxy
+    d_eff_pm_per_V_raw = crystal_inputs.get("d_eff_pm_per_V")
+    d_eff_source = "crystal_input_d_eff_pm_per_V"
+    if d_eff_pm_per_V_raw is None:
+        d_eff_pm_per_V_raw = 1.0
+        d_eff_source = "fallback_unity_pm_per_V"
+    d_eff_pm_per_V = max(float(d_eff_pm_per_V_raw), 1e-12)
+
     crystal_length_m = float(
-        crystal_data.get("inputs", {}).get(
+        crystal_inputs.get(
             "crystal_length_m",
-            cavity_data.get("inputs", {}).get("crystal_length_m", 0.0),
+            cavity_inputs.get("crystal_length_m", 0.0),
         )
     )
-    crystal_length_scale = max(crystal_length_m / 1e-2, 1e-12)
+    crystal_length_m = max(crystal_length_m, 1e-12)
+
+    waist_crystal_m_raw = mode_matching.get("waist_crystal_m")
+    waist_source = "mode_matching.waist_crystal_m"
+    if waist_crystal_m_raw is None:
+        waist_crystal_m_raw = crystal_inputs.get("beam_waist_crystal_m")
+        waist_source = "inputs.beam_waist_crystal_m"
+    if waist_crystal_m_raw is None:
+        waist_crystal_m_raw = 30e-6
+        waist_source = "fallback_30um"
+    waist_crystal_m = max(float(waist_crystal_m_raw), 1e-12)
+    effective_mode_area_m2 = max(float(np.pi * waist_crystal_m**2), 1e-24)
+
     linewidth_hz = float(cavity_results.get("kappa_total_Hz", 0.0))
-    detuning_hz = float(cavity_data.get("inputs", {}).get("detuning_Hz", 0.0))
+    detuning_hz = float(cavity_inputs.get("detuning_Hz", 0.0))
     escape_efficiency = float(cavity_results.get("escape_efficiency", 0.0))
     linewidth_reference_hz = 1e8
 
-    # Stronger overlap and longer interaction length reduce the threshold proxy.
-    effective_nonlinear_coupling = max(nonlinear_coupling_proxy * crystal_length_scale, 1e-12)
+    d_eff_m_per_V = d_eff_pm_per_V * 1e-12
+    # This remains a compact proxy for nonlinear gain rather than a full
+    # first-principles gain coefficient.
+    effective_nonlinear_coupling = max(
+        d_eff_m_per_V * crystal_length_m * nonlinear_overlap / np.sqrt(effective_mode_area_m2),
+        1e-18,
+    )
     # Higher cavity loss raises the threshold proxy; lower escape efficiency
     # weakly penalizes the estimate in this intermediate model.
     cavity_loss_scale = (max(linewidth_hz, 0.0) / linewidth_reference_hz) ** 2 / max(
@@ -123,24 +158,35 @@ def derive_opo_quantities(
     )
     cavity_loss_scale = max(float(cavity_loss_scale), 1e-12)
 
+    # Normalize the physically motivated coupling proxy to a dimensionless
+    # threshold-scaling factor anchored near typical present run conditions.
+    nonlinear_coupling_reference_per_V = 5.0e-10
+    coupling_scale = max(effective_nonlinear_coupling / nonlinear_coupling_reference_per_V, 1e-12)
     # ``threshold_power_W`` remains the engineering calibration that sets the
-    # watt scale, while the cavity-loss scale applies a physics-informed
-    # correction around that baseline.
-    crystal_gain_factor = effective_nonlinear_coupling
+    # watt scale, while the cavity-loss and nonlinear-coupling proxies apply
+    # the current physics-informed correction around that baseline.
+    crystal_gain_factor = coupling_scale
     effective_threshold_power_W = (
-        baseline_threshold_power_W * (1.0 + cavity_loss_scale) / effective_nonlinear_coupling
+        baseline_threshold_power_W * (1.0 + cavity_loss_scale) / coupling_scale
     )
     pump_parameter = float(parameters.pump_power_W) / effective_threshold_power_W
 
     notes = [
         "Physics-informed OPO operating-point model.",
-        "The threshold uses a cavity-loss proxy together with a crystal-derived nonlinear-coupling proxy.",
+        "The threshold uses a cavity-loss proxy together with a crystal-derived nonlinear-coupling estimate.",
+        "The nonlinear coupling includes d_eff, crystal length, nonlinear overlap, and effective mode area.",
         "The user-supplied threshold power is retained as a calibration scale, not as the full threshold model.",
         "This remains an intermediate model rather than a full first-principles threshold derivation.",
     ]
     if "pm_power_best" in phase_matching:
         notes.append("Crystal phase-matching output is loaded and available for future coupling calibration.")
     notes.append(f"Crystal gain source: {crystal_gain_source}.")
+    notes.append(f"d_eff source: {d_eff_source}.")
+    notes.append(f"Waist source for effective mode area: {waist_source}.")
+    notes.append("The nonlinear-overlap term may come from fallback proxy sources when direct mode-matching data is unavailable.")
+    notes.append(
+        f"Nonlinear coupling reference scale for threshold normalization: {nonlinear_coupling_reference_per_V:.3e} 1/V."
+    )
 
     return OPOModelResult(
         pump_parameter=float(pump_parameter),
@@ -148,10 +194,15 @@ def derive_opo_quantities(
         baseline_threshold_power_W=baseline_threshold_power_W,
         effective_threshold_power_W=float(effective_threshold_power_W),
         pump_power_W=float(parameters.pump_power_W),
+        d_eff_pm_per_V=float(d_eff_pm_per_V),
+        crystal_length_m=float(crystal_length_m),
+        effective_mode_area_m2=float(effective_mode_area_m2),
         nonlinear_coupling_proxy=float(nonlinear_coupling_proxy),
+        nonlinear_overlap=float(nonlinear_overlap),
         effective_nonlinear_coupling=float(effective_nonlinear_coupling),
         cavity_loss_scale=float(cavity_loss_scale),
         crystal_gain_source=crystal_gain_source,
+        d_eff_source=d_eff_source,
         crystal_gain_factor=float(crystal_gain_factor),
         below_threshold=bool(pump_parameter < 1.0),
         escape_efficiency=escape_efficiency,

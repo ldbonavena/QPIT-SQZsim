@@ -29,14 +29,19 @@ class OPOSqueezingSpectrum:
     notes: tuple[str, ...]
 
 
-def _compute_output_spectral_density(
+def _compute_minimal_output_spectral_density(
     drift_matrix: np.ndarray,
     input_matrix: np.ndarray,
     noise_coupling_matrix: np.ndarray,
     linewidth_rad_s: float,
     omega_rad_s: float,
 ) -> np.ndarray:
-    """Return the minimal output spectral density at one analysis frequency."""
+    """Return a compact output spectral density for the current 2x2 model.
+
+    This helper is intentionally minimal and only targets the present
+    below-threshold 2x2 quadrature model. It should not be interpreted as a
+    full general quantum input-output construction.
+    """
     identity = np.eye(drift_matrix.shape[0], dtype=complex)
     response = np.linalg.inv(1j * float(omega_rad_s) * identity - drift_matrix.astype(complex))
     coupling_scale = np.sqrt(2.0 * float(linewidth_rad_s))
@@ -101,7 +106,7 @@ def compute_squeezing_spectra(
 
     for i, omega_i in enumerate(omega):
         try:
-            output_sd = _compute_output_spectral_density(
+            output_sd = _compute_minimal_output_spectral_density(
                 drift_matrix,
                 input_matrix,
                 noise_coupling_matrix,
@@ -167,7 +172,7 @@ def compute_squeezing_spectra(
     measured = 1.0 - eta_det + eta_det * measured_coupled
 
     notes = [
-        "Spectrum computed from the Langevin drift, input, and noise-coupling matrices in a 2x2 quadrature basis.",
+        "Spectrum computed from a minimal output spectral-density construction in a 2x2 quadrature basis.",
         "The X/P quadratures are mixed by cavity detuning before squeezing and anti-squeezing labels are assigned.",
         "Squeezing and anti-squeezing labels are assigned from the low-frequency ordering of the quadrature spectra.",
         f"Measured quadrature defined by homodyne LO phase theta = {theta:.6f} rad.",

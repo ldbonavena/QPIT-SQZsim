@@ -78,6 +78,19 @@ The currently implemented axis mapping is:
 
 Implementation note: the current `type_II` support reflects the present axis-based refractive-index assignment used by the crystal layer. It should not be overinterpreted as a fully general polarization treatment beyond what the rest of the current code explicitly models.
 
+## Effective Nonlinearity
+
+The effective nonlinearity `d_eff` is resolved explicitly in `src/crystal/crystal_materials.py` from:
+
+- the selected crystal model
+- the selected phase-matching type
+
+The crystal layer treats this as material-specific interaction data and exports the resolved `d_eff` in the structured crystal output for downstream use by the OPO model.
+
+In the current implementation, `d_eff` represents the effective nonlinear coupling strength for the selected interaction type within the present axis-based crystal model. This means the exported value is consistent with the current pump/signal/idler axis assignment and with the current interaction-type resolver.
+
+As with the current `type_II` axis assignment, the present `d_eff` treatment should be interpreted as an axis-based model choice rather than as a full general polarization treatment.
+
 ## Gaussian Beam Focusing
 
 Phase matching alone is not enough. The field distribution inside the crystal also matters, because nonlinear coupling depends on how tightly the Gaussian mode is focused.

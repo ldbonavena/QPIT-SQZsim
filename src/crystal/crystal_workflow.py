@@ -275,6 +275,9 @@ def print_crystal_summary(result: CrystalSimulationResult) -> None:
             "Interaction type: "
             f"{phase_matching_type} ({pump_axis} -> {signal_axis} + {idler_axis})"
         )
+    d_eff_pm_per_V = phase.get("d_eff_pm_per_V")
+    if d_eff_pm_per_V is not None:
+        print(f"Effective nonlinearity d_eff: {float(d_eff_pm_per_V):.6e} pm/V")
     print(f"Best phase-matching temperature: {t_best:.3f} K")
     print(f"Best phase-matching power factor: {pm_best:.6f}")
     print(f"Beam waist in crystal: {mode.waist_crystal_m*1e6:.3f} um")

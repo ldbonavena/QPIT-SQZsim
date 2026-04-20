@@ -21,7 +21,7 @@ Consumes cavity output and runs the crystal design-and-analysis workflow for the
 
 - `crystal_main.py`: entry point for the crystal layer
 - `crystal_workflow.py`: orchestrates cavity-output loading, design poling, phase matching, mode matching, BK analysis, and export
-- `crystal_materials.py`: refractive-index and thermo-optic helper functions, and interaction-type-to-axis resolution
+- `crystal_materials.py`: refractive-index and thermo-optic helper functions, interaction-type-to-axis resolution, and effective-nonlinearity resolution
 - `crystal_phase_matching.py`: `Delta k`, QPM, design poling, and temperature scans
 - `crystal_mode_matching.py`: converts cavity beam data into focusing and overlap metrics
 - `crystal_boyd_kleinman.py`: focused-beam overlap model and BK/QPM analysis helpers
@@ -40,7 +40,7 @@ Consumes cavity and crystal outputs and runs the current below-threshold degener
 
 - `opo_main.py`: entry point for the OPO layer
 - `opo_workflow.py`: orchestrates cavity/crystal loading, operating-point construction, Langevin modeling, squeezing spectra, and export
-- `opo_model.py`: operating-point quantities and threshold proxies derived from cavity/crystal results
+- `opo_model.py`: operating-point quantities, nonlinear coupling, and threshold estimates derived from cavity/crystal results
 - `opo_langevin.py`: 2x2 quadrature-basis Langevin model
 - `opo_squeezing.py`: frequency-domain quadrature and homodyne spectra
 - `opo_plotter.py`: OPO spectrum visualization
@@ -108,7 +108,19 @@ Today, the crystal layer relies most directly on:
 - `n_crystal`
 - optionally the exported `q` parameters for richer downstream mode context
 
-This output is the handoff to the OPO layer, where nonlinear coupling and cavity response are combined into threshold and squeezing predictions.
+The crystal output is then the handoff to the OPO layer. In the current implementation the crystal JSON exports:
+
+- resolved interaction metadata, including `phase_matching_type` and crystal axes
+- resolved effective nonlinearity `d_eff`
+- crystal geometry such as crystal length and beam waist
+- overlap-related quantities such as `effective_nonlinear_overlap`
+
+The OPO layer consumes those exported quantities together with cavity linewidth and detuning to build:
+
+- an effective nonlinear coupling derived from `d_eff`, overlap, and mode size
+- a compact physics-informed threshold estimate
+- a 2x2 quadrature Langevin model
+- frequency-domain squeezing and homodyne spectra
 
 ## Results Layout
 
@@ -133,7 +145,7 @@ This layout reflects the staged physical workflow rather than the implementation
 
 The modular structure was chosen for physical and software reasons.
 
-On the physics side, the cavity, crystal, and OPO problems are related but not identical. The cavity layer is mostly paraxial resonator optics; the crystal layer adds material dispersion and nonlinear overlap; the OPO layer will add dynamical response and quantum noise. Keeping these layers separated avoids mixing incompatible abstractions.
+On the physics side, the cavity, crystal, and OPO problems are related but not identical. The cavity layer is mostly paraxial resonator optics; the crystal layer adds material dispersion, effective nonlinearity, and nonlinear overlap; the OPO layer adds dynamical response, nonlinear coupling, and squeezing spectra. Keeping these layers separated avoids mixing incompatible abstractions.
 
 On the software side, the JSON handoff makes dependencies explicit. The crystal code does not need to know how the cavity geometry was built internally; it only needs the exported optical mode and cavity parameters. That makes it easier to:
 
