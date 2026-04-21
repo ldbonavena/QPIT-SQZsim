@@ -10,9 +10,25 @@ The pipeline is:
 - The crystal layer computes phase matching, double resonance, and the selected active operating point.
 - The OPO layer consumes those exported quantities and builds the operating-point model, Langevin scaffold, and squeezing spectra.
 
+## Installation
+
+```bash
+git clone <repository-url>
+cd QPIT-SQZsim
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+Optional editable install:
+
+```bash
+pip install -e .
+```
+
 ## Quick Start
 
-Run the layers in order:
+Run the simulation pipeline in order:
 
 ```bash
 python src/cavity/cavity_main.py
@@ -20,7 +36,7 @@ python src/crystal/crystal_main.py
 python src/opo/opo_main.py
 ```
 
-The order matters because each layer consumes the JSON output of the previous one.
+Each step depends on the outputs produced by the previous one.
 
 ## Source Layout
 
