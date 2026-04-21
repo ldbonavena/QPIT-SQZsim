@@ -25,6 +25,7 @@ from cavity_analysis import (
     make_m_factor_estimator,
     make_q_estimator,
     optical_roundtrip_length,
+    resolve_resonant_loss_model,
 )
 from cavity_plotter import print_geometry_ascii
 
@@ -454,11 +455,12 @@ def compute_cavity_derived_quantities(
     context: CavityContext,
     operating_point: CavityOperatingPoint,
     c_m_per_s: float,
-    T_ext: float,
-    L_rt: float,
     detuning_Hz: float,
+    loss_model_parameters: dict[str, Any] | None = None,
+    T_ext: float | None = None,
+    L_rt: float | None = None,
 ) -> dict[str, float]:
-    """Compute derived cavity figures for a single cavity operating point."""
+    """Compute derived cavity figures from one explicit resonant loss model."""
     beam_waist_crystal_um = (
         beam_waist_from_q(
             operating_point.qs,
@@ -472,7 +474,28 @@ def compute_cavity_derived_quantities(
         operating_point.optical_crystal_length,
         context.parameters["f_n_crystal"],
     )
-    decay = compute_decay_rates(optical_roundtrip_length_m, c_m_per_s, T_ext, L_rt)
+    effective_loss_parameters = dict(context.parameters if loss_model_parameters is None else loss_model_parameters)
+    if T_ext is not None or L_rt is not None:
+        if any(
+            key in effective_loss_parameters
+            for key in ("R1_resonant", "R2_resonant", "alpha_resonant_per_m", "L_parasitic_rt")
+        ):
+            raise ValueError("Do not mix explicit loss_model_parameters with legacy T_ext/L_rt inputs.")
+        if T_ext is not None:
+            effective_loss_parameters["f_T_ext"] = float(T_ext)
+        if L_rt is not None:
+            effective_loss_parameters["f_L_rt"] = float(L_rt)
+
+    loss_model = resolve_resonant_loss_model(
+        effective_loss_parameters,
+        roundtrip_propagation_length_m=operating_point.cavity_length,
+    )
+    decay = compute_decay_rates(
+        optical_roundtrip_length_m,
+        c_m_per_s,
+        output_coupling_transmission=float(loss_model["output_coupling_transmission"]),
+        internal_roundtrip_loss=float(loss_model["internal_roundtrip_loss"]),
+    )
     gouy = gouy_phases_from_m_factor(context.geometry, operating_point.m_factor)
 
     return {
@@ -481,8 +504,22 @@ def compute_cavity_derived_quantities(
         "optical_crystal_length_m": float(operating_point.optical_crystal_length),
         "optical_roundtrip_length_m": float(optical_roundtrip_length_m),
         "fsr_Hz": float(fsr_from_roundtrip_length(optical_roundtrip_length_m, c_m_per_s)),
+        "loss_model_source": str(loss_model["loss_model_source"]),
+        "roundtrip_propagation_length_m": float(loss_model["roundtrip_propagation_length_m"]),
+        "reflectivity_input_resonant": float(loss_model["reflectivity_input_resonant"]),
+        "reflectivity_output_resonant": float(loss_model["reflectivity_output_resonant"]),
+        "input_coupler_transmission": float(loss_model["input_coupler_transmission"]),
+        "output_coupling_transmission": float(loss_model["output_coupling_transmission"]),
+        "alpha_resonant_per_m": float(loss_model["alpha_resonant_per_m"]),
+        "bulk_roundtrip_loss": float(loss_model["bulk_roundtrip_loss"]),
+        "parasitic_roundtrip_loss": float(loss_model["parasitic_roundtrip_loss"]),
+        "internal_roundtrip_loss": float(loss_model["internal_roundtrip_loss"]),
         "kappa_ext_rad_s": decay["kappa_ext_rad_s"],
+        "kappa_ext_Hz": decay["kappa_ext_Hz"],
         "kappa_loss_rad_s": decay["kappa_loss_rad_s"],
+        "kappa_loss_Hz": decay["kappa_loss_Hz"],
+        "kappa_int_rad_s": decay["kappa_int_rad_s"],
+        "kappa_int_Hz": decay["kappa_int_Hz"],
         "kappa_total_rad_s": decay["kappa_total_rad_s"],
         "kappa_total_Hz": decay["kappa_total_Hz"],
         "escape_efficiency": decay["escape_efficiency"],
@@ -502,9 +539,10 @@ def compute_derived_cavity_quantities(
     wavelength: float,
     n_crystal: float,
     c_m_per_s: float,
-    T_ext: float,
-    L_rt: float,
     detuning_Hz: float,
+    T_ext: float | None = None,
+    L_rt: float | None = None,
+    loss_model_parameters: dict[str, Any] | None = None,
 ) -> dict[str, float]:
     """Backward-compatible wrapper for derived cavity figures."""
     context = build_cavity_context(
@@ -527,9 +565,10 @@ def compute_derived_cavity_quantities(
         context,
         operating_point,
         c_m_per_s=c_m_per_s,
+        detuning_Hz=detuning_Hz,
         T_ext=T_ext,
         L_rt=L_rt,
-        detuning_Hz=detuning_Hz,
+        loss_model_parameters=loss_model_parameters,
     )
 
 
@@ -613,22 +652,32 @@ def print_derived_cavity_quantities(results: dict[str, float]) -> None:
             print(f"{label:<32}: {value}")
 
     detuning_hz = results["detuning_rad_s"] / (2.0 * np.pi)
-    kappa_ext_hz = results["kappa_ext_rad_s"] / (2.0 * np.pi)
-    kappa_loss_hz = results["kappa_loss_rad_s"] / (2.0 * np.pi)
     _print_specs(
         "Derived cavity figures",
         [
             ("Beam waist in crystal", f"{results['beam_waist_crystal_um']:.3f} um"),
             ("Geometric cavity length", f"{results['cavity_length_m']:.6f} m"),
             ("Optical round-trip length", f"{results['optical_roundtrip_length_m']:.6f} m"),
+            (
+                "Reflectivity (input/output)",
+                f"{results['reflectivity_input_resonant']:.6f} / {results['reflectivity_output_resonant']:.6f}",
+            ),
+            (
+                "Transmission (input/output)",
+                f"{results['input_coupler_transmission']:.6e} / {results['output_coupling_transmission']:.6e}",
+            ),
+            ("Distributed loss coeff.", f"{results['alpha_resonant_per_m']:.6e} 1/m"),
+            ("Bulk round-trip loss", f"{results['bulk_roundtrip_loss']:.6e}"),
+            ("Parasitic round-trip loss", f"{results['parasitic_roundtrip_loss']:.6e}"),
+            ("Internal round-trip loss", f"{results['internal_roundtrip_loss']:.6e}"),
             ("FSR", f"{results['fsr_Hz']:.6f} Hz ({results['fsr_Hz']/1e6:.6f} MHz)"),
             (
                 "kappa_ext",
-                f"{results['kappa_ext_rad_s']:.3e} rad/s (kappa_ext/2pi = {kappa_ext_hz:.3e} Hz)",
+                f"{results['kappa_ext_rad_s']:.3e} rad/s (kappa_ext/2pi = {results['kappa_ext_Hz']:.3e} Hz)",
             ),
             (
                 "kappa_loss",
-                f"{results['kappa_loss_rad_s']:.3e} rad/s (kappa_loss/2pi = {kappa_loss_hz:.3e} Hz)",
+                f"{results['kappa_loss_rad_s']:.3e} rad/s (kappa_loss/2pi = {results['kappa_loss_Hz']:.3e} Hz)",
             ),
             (
                 "kappa_total",
@@ -674,20 +723,52 @@ def build_cavity_simulation_output(
     geometry_inputs, m_factor_export = build_geometry_inputs_for_export(result.context.geometry, result.operating_point)
     derived = result.derived_quantities
 
-    return {
-        "geometry": result.context.geometry,
-        "constants": {"c_m_per_s": float(c_m_per_s)},
+    output = {
         "inputs": {
+            "geometry": result.context.geometry,
+            "c_m_per_s": float(c_m_per_s),
             "crystal_length_m": float(parameters["f_crystal_length"]),
             "n_crystal": float(parameters["f_n_crystal"]),
             "RoC_m": float(result.operating_point.geometry_values.get("RoC_m", parameters["f_RoC"])),
             "wavelength_m": float(parameters["f_wavelength"]),
-            "T_ext": float(parameters["f_T_ext"]),
-            "L_rt": float(parameters["f_L_rt"]),
+            "reflectivity_input_resonant": float(derived["reflectivity_input_resonant"]),
+            "reflectivity_output_resonant": float(derived["reflectivity_output_resonant"]),
+            "alpha_resonant_per_m": float(derived["alpha_resonant_per_m"]),
+            "parasitic_roundtrip_loss": float(derived["parasitic_roundtrip_loss"]),
+            "T_ext": float(derived["output_coupling_transmission"]),
+            "L_rt": float(derived["internal_roundtrip_loss"]),
             "detuning_Hz": float(parameters["f_detuning_Hz"]),
             "geometry_specific": geometry_inputs,
         },
         "results": {
+            "beam_waist_crystal_um": float(derived["beam_waist_crystal_um"]),
+            "cavity_length_m": float(derived["cavity_length_m"]),
+            "optical_crystal_length_m": float(derived["optical_crystal_length_m"]),
+            "optical_roundtrip_length_m": float(derived["optical_roundtrip_length_m"]),
+            "fsr_Hz": float(derived["fsr_Hz"]),
+            "loss_model_source": str(derived["loss_model_source"]),
+            "roundtrip_propagation_length_m": float(derived["roundtrip_propagation_length_m"]),
+            "reflectivity_input_resonant": float(derived["reflectivity_input_resonant"]),
+            "reflectivity_output_resonant": float(derived["reflectivity_output_resonant"]),
+            "input_coupler_transmission": float(derived["input_coupler_transmission"]),
+            "output_coupling_transmission": float(derived["output_coupling_transmission"]),
+            "bulk_roundtrip_loss": float(derived["bulk_roundtrip_loss"]),
+            "parasitic_roundtrip_loss": float(derived["parasitic_roundtrip_loss"]),
+            "internal_roundtrip_loss": float(derived["internal_roundtrip_loss"]),
+            "kappa_ext_rad_s": float(derived["kappa_ext_rad_s"]),
+            "kappa_ext_Hz": float(derived["kappa_ext_Hz"]),
+            "kappa_loss_rad_s": float(derived["kappa_loss_rad_s"]),
+            "kappa_loss_Hz": float(derived["kappa_loss_Hz"]),
+            "kappa_int_rad_s": float(derived["kappa_int_rad_s"]),
+            "kappa_int_Hz": float(derived["kappa_int_Hz"]),
+            "kappa_total_rad_s": float(derived["kappa_total_rad_s"]),
+            "kappa_total_Hz": float(derived["kappa_total_Hz"]),
+            "escape_efficiency": float(derived["escape_efficiency"]),
+            "detuning_rad_s": float(derived["detuning_rad_s"]),
+            "gouy_phase_sagittal_rad": float(derived["gouy_phase_sagittal_rad"]),
+            "gouy_phase_tangential_rad": float(derived["gouy_phase_tangential_rad"]),
+        },
+        "debug_data": {
             "q_sagittal": {
                 "real": float(np.real(result.operating_point.qs)),
                 "imag": float(np.imag(result.operating_point.qs)),
@@ -697,21 +778,9 @@ def build_cavity_simulation_output(
                 "imag": float(np.imag(result.operating_point.qt)),
             },
             "m_factor": m_factor_export,
-            "beam_waist_crystal_um": float(derived["beam_waist_crystal_um"]),
-            "cavity_length_m": float(derived["cavity_length_m"]),
-            "optical_crystal_length_m": float(derived["optical_crystal_length_m"]),
-            "optical_roundtrip_length_m": float(derived["optical_roundtrip_length_m"]),
-            "fsr_Hz": float(derived["fsr_Hz"]),
-            "kappa_ext_rad_s": float(derived["kappa_ext_rad_s"]),
-            "kappa_loss_rad_s": float(derived["kappa_loss_rad_s"]),
-            "kappa_total_rad_s": float(derived["kappa_total_rad_s"]),
-            "kappa_total_Hz": float(derived["kappa_total_Hz"]),
-            "escape_efficiency": float(derived["escape_efficiency"]),
-            "detuning_rad_s": float(derived["detuning_rad_s"]),
-            "gouy_phase_sagittal_rad": float(derived["gouy_phase_sagittal_rad"]),
-            "gouy_phase_tangential_rad": float(derived["gouy_phase_tangential_rad"]),
         },
     }
+    return output
 
 
 def save_cavity_outputs(
@@ -742,7 +811,6 @@ def save_cavity_outputs(
         "stability_map_png": _repo_relative(stability_path),
         "waist_map_png": _repo_relative(waist_path),
     }
-    output["outputs"] = outputs_info
 
     with json_path.open("w", encoding="utf-8") as f:
         json.dump(output, f, indent=2)

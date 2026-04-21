@@ -25,11 +25,19 @@ from .crystal_mode_matching import (
 from .crystal_boyd_kleinman import (
     BKAnalysisConfig,
     bk_analysis_result_to_dict,
-    run_bk_analysis,
     run_bk_analysis_pair,
 )
 from .crystal_phase_matching import compute_design_poling_period as compute_design_poling_period_from_material_model
 from .crystal_phase_matching import scan_phase_matching_vs_temperature
+
+_BK_MAP_KEYS = frozenset(
+    {
+        "bk_master_sigma_values",
+        "bk_master_xi_values",
+        "bk_master_h_map",
+    }
+)
+_CRYSTAL_LENGTH_MATCH_TOLERANCE_M = 1e-9
 
 
 @dataclass(frozen=True)
@@ -52,11 +60,13 @@ class CrystalSimulationResult:
     context: CrystalContext
     phase_matching: dict[str, Any]
     mode_matching: ModeMatchingResult
+    selected_operating_phase_matching: dict[str, Any] | None = None
     phase_matching_operating_point: dict[str, Any] | None = None
     double_resonance_operating_point: dict[str, Any] | None = None
     selected_operating_point_mode: str | None = None
     selected_operating_point: dict[str, Any] | None = None
     polarization_resonance: dict[str, Any] | None = None
+    active_polarization_resonance: dict[str, Any] | None = None
     double_resonance_scan: dict[str, Any] | None = None
     bk_analysis: dict[str, Any] | None = None
 
@@ -86,7 +96,7 @@ def load_cavity_context_for_crystal(
         raise ValueError("Cavity output missing results.beam_waist_crystal_um")
 
     return CrystalContext(
-        geometry=cavity_data.get("geometry", geometry),
+        geometry=str(cavity_data.get("geometry", inputs.get("geometry", geometry))),
         cavity_output_path=str(Path(cavity_output_path)),
         crystal_length_m=float(inputs["crystal_length_m"]),
         wavelength_m=float(inputs["wavelength_m"]),
@@ -105,9 +115,14 @@ def _to_json_compatible(value: Any) -> Any:
     if isinstance(value, dict):
         return {key: _to_json_compatible(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):
-        return [_to_json_compatible(item) for item in value]
+        items = [_to_json_compatible(item) for item in value]
+        if len(items) == 1 and isinstance(items[0], (bool, int, float)) and not isinstance(items[0], str):
+            return items[0]
+        return items
     if isinstance(value, np.ndarray):
-        return value.tolist()
+        if value.ndim == 0 or value.size == 1:
+            return _to_json_compatible(value.reshape(-1)[0].item())
+        return _to_json_compatible(value.tolist())
     if isinstance(value, np.generic):
         return value.item()
     if isinstance(value, Path):
@@ -240,21 +255,27 @@ def compute_boyd_kleinman_analysis(
     )
     bk_operating = bk_analysis_result_to_dict(bk_results["bk_analysis_operating"])
     bk_optimal = bk_analysis_result_to_dict(bk_results["bk_analysis_optimal"])
-    payload = dict(bk_operating)
-    payload["bk_analysis_operating"] = bk_operating
-    payload["bk_analysis_optimal"] = bk_optimal
-    return payload
+    return {
+        "reference": bk_operating.get("reference", {}),
+        "bk_master_sigma_opt": bk_operating.get("bk_master_sigma_opt"),
+        "bk_master_xi_opt": bk_operating.get("bk_master_xi_opt"),
+        "bk_master_h_opt": bk_operating.get("bk_master_h_opt"),
+        "bk_analysis_operating": bk_operating,
+        "bk_analysis_optimal": bk_optimal,
+    }
 
 
 def build_crystal_simulation_result(
     context: CrystalContext,
     phase_matching: dict[str, Any],
     mode_matching: ModeMatchingResult,
+    selected_operating_phase_matching: dict[str, Any] | None = None,
     phase_matching_operating_point: dict[str, Any] | None = None,
     double_resonance_operating_point: dict[str, Any] | None = None,
     selected_operating_point_mode: str | None = None,
     selected_operating_point: dict[str, Any] | None = None,
     polarization_resonance: dict[str, Any] | None = None,
+    active_polarization_resonance: dict[str, Any] | None = None,
     double_resonance_scan: dict[str, Any] | None = None,
     bk_analysis: dict[str, Any] | None = None,
 ) -> CrystalSimulationResult:
@@ -263,11 +284,13 @@ def build_crystal_simulation_result(
         context=context,
         phase_matching=phase_matching,
         mode_matching=mode_matching,
+        selected_operating_phase_matching=selected_operating_phase_matching,
         phase_matching_operating_point=phase_matching_operating_point,
         double_resonance_operating_point=double_resonance_operating_point,
         selected_operating_point_mode=selected_operating_point_mode,
         selected_operating_point=selected_operating_point,
         polarization_resonance=polarization_resonance,
+        active_polarization_resonance=active_polarization_resonance,
         double_resonance_scan=double_resonance_scan,
         bk_analysis=bk_analysis,
     )
@@ -404,6 +427,14 @@ def print_crystal_summary(result: CrystalSimulationResult) -> None:
         print(f"Selected operating point mode: {result.selected_operating_point_mode}")
     if result.selected_operating_point is not None:
         print(f"Active operating temperature: {float(result.selected_operating_point['temperature_K']):.3f} K")
+        active_crystal_length_m = float(result.selected_operating_point.get("crystal_length_m", result.context.crystal_length_m))
+        if abs(active_crystal_length_m - float(result.context.crystal_length_m)) > _CRYSTAL_LENGTH_MATCH_TOLERANCE_M:
+            print(
+                "Selected crystal length differs from loaded cavity geometry; "
+                f"rerun cavity with {active_crystal_length_m * 1e3:.6f} mm before OPO."
+            )
+    if result.active_polarization_resonance is not None:
+        print("Active polarization-resonance diagnostic evaluated at selected operating temperature.")
 
     if bk_analysis is not None:
         reference = bk_analysis.get("reference", {})
@@ -434,35 +465,246 @@ def _build_crystal_inputs_payload(context: CrystalContext) -> dict[str, Any]:
     }
 
 
-def _build_crystal_results_payload(result: CrystalSimulationResult) -> dict[str, Any]:
-    payload = {
-        "phase_matching": result.phase_matching,
-        "mode_matching": asdict(result.mode_matching),
+def _build_mode_matching_payload(mode_matching: ModeMatchingResult) -> dict[str, float]:
+    return {
+        "focusing_parameter_xi": float(mode_matching.focusing_parameter_xi),
+        "boyd_kleinman_factor": float(mode_matching.boyd_kleinman_factor),
+        "effective_nonlinear_overlap": float(mode_matching.effective_nonlinear_overlap),
     }
-    if result.phase_matching_operating_point is not None:
-        payload["phase_matching_operating_point"] = result.phase_matching_operating_point
-    if result.double_resonance_operating_point is not None:
-        payload["double_resonance_operating_point"] = result.double_resonance_operating_point
+
+
+def _build_mode_matching_debug_payload(mode_matching: ModeMatchingResult) -> dict[str, float]:
+    return asdict(mode_matching)
+
+
+def _build_mode_matching_active_payload(mode_matching: ModeMatchingResult) -> dict[str, float]:
+    return {
+        "waist_crystal_m": float(mode_matching.waist_crystal_m),
+        "rayleigh_range_m": float(mode_matching.rayleigh_range_m),
+        "confocal_parameter_m": float(mode_matching.confocal_parameter_m),
+        "focusing_parameter_xi": float(mode_matching.focusing_parameter_xi),
+        "boyd_kleinman_factor": float(mode_matching.boyd_kleinman_factor),
+        "effective_nonlinear_overlap": float(mode_matching.effective_nonlinear_overlap),
+    }
+
+
+def _strip_bk_map_payload(value: Any, store_bk_map: bool) -> Any:
+    if isinstance(value, dict):
+        return {
+            key: _strip_bk_map_payload(item, store_bk_map)
+            for key, item in value.items()
+            if store_bk_map or key not in _BK_MAP_KEYS
+        }
+    if isinstance(value, list):
+        return [_strip_bk_map_payload(item, store_bk_map) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_strip_bk_map_payload(item, store_bk_map) for item in value)
+    return value
+
+
+def _build_bk_summary_payload(
+    bk_analysis: dict[str, Any],
+    *,
+    store_bk_map: bool,
+) -> dict[str, Any]:
+    reference = bk_analysis.get("reference", {})
+    payload = {
+        "store_bk_map": bool(store_bk_map),
+    }
+    if reference:
+        payload["reference"] = {
+            key: reference[key]
+            for key in (
+                "reference_kind",
+                "T_opt_K",
+                "crystal_length_m",
+                "xi_reference",
+                "sigma_reference",
+                "bk_reference_factor",
+            )
+            if key in reference
+        }
+    for key in ("bk_master_sigma_opt", "bk_master_xi_opt", "bk_master_h_opt"):
+        if key in bk_analysis:
+            payload[key] = bk_analysis[key]
+    if store_bk_map:
+        operating = bk_analysis.get("bk_analysis_operating", {})
+        for key in _BK_MAP_KEYS:
+            if key in operating:
+                payload[key] = operating[key]
+    return payload
+
+
+def _build_bk_debug_payload(
+    bk_analysis: dict[str, Any],
+    *,
+    store_bk_map: bool,
+) -> dict[str, Any]:
+    payload = _build_bk_summary_payload(bk_analysis, store_bk_map=store_bk_map)
+    for key in ("bk_analysis_operating", "bk_analysis_optimal"):
+        if key in bk_analysis:
+            payload[key] = _strip_bk_map_payload(bk_analysis[key], store_bk_map=store_bk_map)
+    return payload
+
+
+def _build_active_for_opo_payload(
+    result: CrystalSimulationResult,
+    *,
+    store_bk_map: bool,
+) -> dict[str, Any] | None:
+    if result.selected_operating_point_mode is None:
+        return None
+
+    cavity_crystal_length_m = float(result.context.crystal_length_m)
+    selected_operating_point = result.selected_operating_point or {}
+    active_crystal_length_m = float(selected_operating_point.get("crystal_length_m", cavity_crystal_length_m))
+    active_for_opo = {
+        "operating_point_mode": result.selected_operating_point_mode,
+        "temperature_K": float(selected_operating_point.get("temperature_K", np.nan)),
+        "crystal_length_m": active_crystal_length_m,
+        "phase_matching": (
+            {
+                key: result.selected_operating_phase_matching[key]
+                for key in (
+                    "T_K",
+                    "n_p",
+                    "n_s",
+                    "n_i",
+                    "delta_k_rad_per_m",
+                    "delta_k_eff_rad_per_m",
+                    "pm_power",
+                    "phase_matching_type",
+                    "pump_axis",
+                    "signal_axis",
+                    "idler_axis",
+                    "d_eff_pm_per_V",
+                )
+                if result.selected_operating_phase_matching is not None and key in result.selected_operating_phase_matching
+            }
+            if result.selected_operating_phase_matching is not None
+            else None
+        ),
+        "mode_matching": _build_mode_matching_active_payload(result.mode_matching),
+        "boyd_kleinman_analysis": (
+            _build_bk_summary_payload(result.bk_analysis, store_bk_map=store_bk_map)
+            if result.bk_analysis is not None
+            else None
+        ),
+        "polarization_resonance": result.active_polarization_resonance,
+        "cavity_crystal_length_m": cavity_crystal_length_m,
+        "crystal_length_matches_cavity": bool(
+            abs(active_crystal_length_m - cavity_crystal_length_m) <= _CRYSTAL_LENGTH_MATCH_TOLERANCE_M
+        ),
+        "recommended_cavity_crystal_length_m": active_crystal_length_m,
+    }
+    return {key: value for key, value in active_for_opo.items() if value is not None}
+
+
+def _build_crystal_results_payload(
+    result: CrystalSimulationResult,
+    *,
+    store_bk_map: bool,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {}
     if result.selected_operating_point_mode is not None:
         payload["selected_operating_point_mode"] = result.selected_operating_point_mode
     if result.selected_operating_point is not None:
         payload["selected_operating_point"] = result.selected_operating_point
-    if result.polarization_resonance is not None:
-        payload["polarization_resonance"] = result.polarization_resonance
-    if result.double_resonance_scan is not None:
-        payload["double_resonance_scan"] = result.double_resonance_scan
+    payload["mode_matching"] = _build_mode_matching_payload(result.mode_matching)
     if result.bk_analysis is not None:
-        payload["boyd_kleinman_analysis"] = result.bk_analysis
+        payload["boyd_kleinman_analysis"] = _build_bk_summary_payload(
+            result.bk_analysis,
+            store_bk_map=store_bk_map,
+        )
+    if result.active_polarization_resonance is not None:
+        payload["polarization_resonance"] = result.active_polarization_resonance
+    active_for_opo = _build_active_for_opo_payload(result, store_bk_map=store_bk_map)
+    if active_for_opo is not None:
+        payload["active_for_opo"] = active_for_opo
     return payload
 
 
-def build_crystal_simulation_output(result: CrystalSimulationResult) -> dict[str, Any]:
-    """Build JSON-serializable crystal simulation output."""
-    return {
-        "geometry": result.context.geometry,
-        "inputs": _build_crystal_inputs_payload(result.context),
-        "results": _build_crystal_results_payload(result),
+def _build_double_resonance_scan_payload(
+    scan: dict[str, Any],
+    include_full_matrices: bool = False,
+) -> dict[str, Any]:
+    payload = {
+        "temperature_grid_K": scan["temperature_grid_K"],
+        "crystal_length_grid_m": scan["crystal_length_grid_m"],
+        "resonance_tolerance_rad": float(scan["resonance_tolerance_rad"]),
+        "best_temperature_K": float(scan["best_temperature_K"]),
+        "best_crystal_length_m": float(scan["best_crystal_length_m"]),
+        "best_delta_phi_wrapped_rad": float(scan["best_delta_phi_wrapped_rad"]),
+        "best_abs_delta_phi_wrapped_rad": float(scan["best_abs_delta_phi_wrapped_rad"]),
+        "best_is_double_resonant": bool(scan["best_is_double_resonant"]),
     }
+    if include_full_matrices:
+        payload["delta_phi_wrapped_rad"] = scan["delta_phi_wrapped_rad"]
+        payload["abs_delta_phi_wrapped_rad"] = scan["abs_delta_phi_wrapped_rad"]
+        payload["is_double_resonant"] = scan["is_double_resonant"]
+    return payload
+
+
+def _build_crystal_debug_payload(
+    result: CrystalSimulationResult,
+    *,
+    save_full_double_resonance_scan: bool = False,
+    store_bk_map: bool = False,
+) -> dict[str, Any]:
+    payload = {}
+    payload["mode_matching"] = _build_mode_matching_debug_payload(result.mode_matching)
+    if result.selected_operating_phase_matching is not None:
+        payload["active_phase_matching"] = result.selected_operating_phase_matching
+    operating_points = {}
+    if result.phase_matching_operating_point is not None:
+        operating_points["phase_matching_operating_point"] = result.phase_matching_operating_point
+    if result.double_resonance_operating_point is not None:
+        operating_points["double_resonance_operating_point"] = result.double_resonance_operating_point
+    if operating_points:
+        payload["operating_points"] = operating_points
+    if result.polarization_resonance is not None:
+        payload["phase_matching_polarization_resonance"] = result.polarization_resonance
+    if result.phase_matching is not None:
+        payload["phase_matching_scan"] = result.phase_matching
+    if result.double_resonance_scan is not None:
+        payload["double_resonance_scan"] = _build_double_resonance_scan_payload(
+            result.double_resonance_scan,
+            include_full_matrices=save_full_double_resonance_scan,
+        )
+    if result.bk_analysis is not None:
+        payload["boyd_kleinman_analysis"] = _build_bk_debug_payload(
+            result.bk_analysis,
+            store_bk_map=store_bk_map,
+        )
+    return payload
+
+
+def build_crystal_simulation_output(
+    result: CrystalSimulationResult,
+    save_full_double_resonance_scan: bool = False,
+    debug: bool = False,
+    store_bk_map: bool = False,
+) -> dict[str, Any]:
+    """Build JSON-serializable crystal simulation output."""
+    output = {
+        "inputs": {
+            "geometry": result.context.geometry,
+            **_build_crystal_inputs_payload(result.context),
+        },
+        "results": _build_crystal_results_payload(
+            result,
+            store_bk_map=store_bk_map,
+        ),
+    }
+    if debug:
+        debug_payload = _build_crystal_debug_payload(
+            result,
+            save_full_double_resonance_scan=save_full_double_resonance_scan,
+            store_bk_map=store_bk_map,
+        )
+        if debug_payload:
+            output["debug_data"] = debug_payload
+    return output
 
 
 def save_crystal_outputs(
@@ -471,43 +713,11 @@ def save_crystal_outputs(
     fig_bk_master=None,
     fig_qpm=None,
     fig_bk=None,
-    legacy_fig_unused=None,
     results_root: str | Path | None = None,
     fig_bk_optimal=None,
     fig_double_resonance_scan=None,
 ) -> dict[str, str]:
     """Save crystal JSON and plots under ``results/<geometry>/crystal/``."""
-    # Backward compatibility:
-    # `save_crystal_outputs(geometry, output, fig_bk)`
-    # `save_crystal_outputs(geometry, output, fig_phase, fig_mode)`
-    # `save_crystal_outputs(geometry, output, fig_bk_master, fig_qpm, fig_bk)`
-    if fig_bk is None and fig_qpm is None and fig_bk_master is not None and hasattr(fig_bk_master, "savefig"):
-        fig_bk = fig_bk_master
-        fig_bk_master = None
-
-    if results_root is None and isinstance(legacy_fig_unused, (str, Path)):
-        results_root = legacy_fig_unused
-        legacy_fig_unused = None
-
-    if fig_bk is None and fig_qpm is not None and hasattr(fig_qpm, "savefig"):
-        fig_bk = fig_qpm
-        fig_qpm = None
-
-    if (
-        fig_bk is not None
-        and fig_qpm is not None
-        and hasattr(fig_bk_master, "savefig")
-        and hasattr(fig_qpm, "savefig")
-        and not hasattr(fig_bk, "savefig")
-    ):
-        fig_bk = fig_qpm
-        fig_qpm = None
-
-    if results_root is None and legacy_fig_unused is not None and not isinstance(legacy_fig_unused, (str, Path)):
-        if fig_bk is None and hasattr(legacy_fig_unused, "savefig"):
-            fig_bk = legacy_fig_unused
-        legacy_fig_unused = None
-
     ensure_geometry_results_subdirs(geometry, results_root=results_root)
     result_dir = get_crystal_results_dir(geometry, results_root=results_root)
     project_root = Path(__file__).resolve().parents[2]

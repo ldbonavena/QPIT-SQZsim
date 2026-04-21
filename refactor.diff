@@ -1,0 +1,1833 @@
+diff --git a/README.md b/README.md
+index 24da448..d5a7d0b 100644
+--- a/README.md
++++ b/README.md
+@@ -1,224 +1,49 @@
+ # QPIT-SQZsim
+ 
+-A modular simulation framework for optical parametric oscillators (OPOs) and squeezed light generation, combining cavity geometry, crystal design physics, and nonlinear interaction modeling.
++`QPIT-SQZsim` is a layered simulator for cavity geometry, nonlinear crystal operating points, and a compact below-threshold OPO model for squeezing studies.
+ 
+-The project is structured in layers:
++The project is organized as a one-way pipeline:
+ 
+-cavity → crystal → OPO → squeezing
++`cavity -> crystal -> OPO`
+ 
+----
++Each layer owns one part of the physics:
+ 
+-# Project Structure
++- `cavity`: geometry, resonant mode, and cavity loss/coupling rates
++- `crystal`: phase matching, selected operating point, mode matching, and BK diagnostics
++- `opo`: operating-point model, Langevin scaffold, and squeezing spectra
+ 
+-```
+-QPIT-SQZsim/
+-    docs/           # Project documentation
+-        overview.md
+-        architecture.md
+-        cavity.md
+-        crystal.md
+-        opo.md
+-    results/        # local simulation outputs; not intended for version control
+-    src/
+-        cavity/     # Cavity geometry and optical mode analysis
+-            cavity_main.py
+-            cavity_workflow.py
+-            cavity_abcd.py
+-            cavity_analysis.py
+-            cavity_plotter.py
+-            optics_abcd.py
+-
+-        crystal/    # Crystal physics and nonlinear interaction modeling
+-            crystal_main.py
+-            crystal_workflow.py
+-            crystal_materials.py
+-            crystal_phase_matching.py
+-            crystal_mode_matching.py
+-            crystal_boyd_kleinman.py
+-            crystal_plotter.py
+-
+-        common/     # Shared utilities (constants, helpers)
+-            __init__.py
+-            constants.py
+-            results_paths.py
+-        opo/        # Below-threshold degenerate OPO modeling and squeezing workflow
+-            __init__.py
+-            opo_main.py
+-            opo_workflow.py
+-            opo_model.py
+-            opo_langevin.py
+-            opo_squeezing.py
+-            opo_plotter.py
+-
+-    LICENSE
+-    README.md
+-    requirements.txt
+-```
+-
+-The project is structured so that each module has a clear responsibility:
+-
+-- **cavity/**: geometry definition, ABCD matrices, stability analysis, beam modes
+-- **crystal/**: crystal design and analysis workflow including dispersion, phase matching, derived QPM poling, mode matching, and focused‑beam nonlinear interaction (Boyd–Kleinman theory)
+-- **opo/**: below-threshold degenerate OPO modeling, Langevin quadrature response, and squeezing spectra
+-- **common/**: reusable constants and shared helpers such as results-path management
+-
+----
+-
+-# What the cavity simulation computes
+-
+-For a given geometry the code computes:
++## What The Model Includes
+ 
+-- Stability maps (|m| < 1)
+-- Eigenmodes via the round-trip ABCD matrix
+-- Beam waist maps
+-- Single-point evaluation:
+-  - q-parameters
+-  - waist in the crystal
+-  - round-trip lengths (geometric and optical)
++- Paraxial cavity analysis from ABCD matrices
++- Reflectivity-based cavity loss modeling
++- Temperature-dependent crystal refractive-index and phase-matching calculations
++- Focused-beam mode matching and Boyd-Kleinman analysis
++- A compact degenerate below-threshold OPO model
++- A minimal 2x2 quadrature-basis Langevin/squeezing workflow
+ 
+-Derived quantities:
++## What The Model Does Not Include
+ 
+-- Free Spectral Range (FSR)
+-- decay rates: `kappa_ext`, `kappa_loss`, `kappa_total`
+-- escape efficiency and detuning
+-- Gouy phases
++- Full non-degenerate multimode OPO dynamics
++- Full first-principles threshold derivation
++- Automatic cavity-geometry retuning when the crystal operating point changes
++- Thermal, photothermal, or pump-depletion dynamics beyond the current compact model
+ 
+-These quantities are the required inputs for later simulations of:
++## Repository Layout
+ 
+-- nonlinear gain
+-- OPO threshold
+-- squeezing spectra
+-
+----
+-
+-# Output files
+-
+-All simulation outputs are written to the local `results/` directory.  
+-The directory structure is created automatically when simulations are executed.
+-
+-```
++```text
++src/
++  cavity/
++  crystal/
++  opo/
++  common/
+ results/
+-    <geometry>/
+-        cavity/
+-            cavity_simulation_output.json
+-            stability_map.png
+-            waist_map.png
+-        crystal/
+-            crystal_simulation_output.json
+-            boyd_kleinman_master_map.png
+-            qpm_length_poling_map.png
+-            boyd_kleinman_analysis.png
+-        opo/
+-            opo_simulation_output.json
+-            opo_squeezing_spectrum.png
+-```
+-
+-Each run produces:
+-
+-**cavity_simulation_output.json**
+-
+-Contains all relevant simulation inputs and computed parameters, including:
+-
+-- cavity geometry parameters
+-- q‑parameters
+-- waist sizes
+-- FSR
+-- decay rates
+-- escape efficiency
+-- Gouy phases
+-
+-This JSON file is used by the next simulation layer (crystal or OPO).
+-
+-**stability_map.png**
+-
+-Visualization of cavity stability across the scanned parameter space.
+-
+-**waist_map.png**
+-
+-Beam waist map corresponding to the same parameter scan.
+-
+-**crystal_simulation_output.json**
+-
+-Contains the crystal-layer inputs derived from the cavity simulation together with:
+-
+-- phase-matching scan results
+-- mode-matching summary values
+-- Boyd-Kleinman analysis payload
+-- cavity output reference used to build the crystal context
+-
+-The crystal results directory now also includes:
+-
+-- `boyd_kleinman_master_map.png`: universal `h_BK(\sigma,\xi)` map with the system reference operating point and the theoretical master-map optimum
+-- `qpm_length_poling_map.png`: normalized QPM / poling-length map with first-order QPM guide
+-- `boyd_kleinman_analysis.png`: system-specific BK sweep analysis around the current operating point
+-
+-**opo_simulation_output.json**
+-
+-Contains the OPO-layer inputs and derived operating-point / spectrum quantities, including:
+-
+-- calibration threshold power
+-- crystal-resolved nonlinear coupling inputs and sources
+-- effective threshold power
+-- pump parameter sigma
+-- cavity linewidth, escape efficiency, and detuning
+-- quadrature squeezing results
+-- measured homodyne spectrum and optimal squeezing phase
+-
+-**opo_squeezing_spectrum.png**
+-
+-Frequency-domain OPO noise spectrum in dB, including:
+-
+-- inferred squeezing
+-- inferred anti-squeezing
+-- measured quadrature for the selected LO phase
+-- shot-noise reference
+-
+----
+-
+-# Modeling approach
+-
+-The cavity model uses the **ABCD matrix formalism** for paraxial Gaussian beams.
+-
+-In the crystal section, propagation is modeled using decoupled ABCD elements instead of a single dielectric slab matrix:
+-
+-- free‑space propagation
+-- dielectric interfaces
+-- crystal propagation
+-
+-In this convention, propagation in free space and in a uniform refractive index medium use the **same propagation matrix**.  
+-The refractive index enters through the dielectric interface matrices and through the waist calculation.
+-
+-This modular construction makes it straightforward to extend the simulation with:
+-
+-- thermal lensing
+-- curved interfaces
+-- nonlinear effects
+-
+----
+-
+-## Installation
+-
+-```bash
+-git clone <repository-url> QPIT-SQZsim
+-cd QPIT-SQZsim
+-python -m venv .venv
+-source .venv/bin/activate
+-pip install -r requirements.txt
++README.md
++requirements.txt
+ ```
+ 
+----
+-
+-# Running simulations
+-
+-Simulations are executed per module (no global pipeline yet).
+-
+-Run the simulation layers directly from their main entry points:
++## Workflow
+ 
+-- `src/cavity/cavity_main.py`
+-- `src/crystal/crystal_main.py`
+-- `src/opo/opo_main.py`
+-
+-Typical usage:
++Run the layers in order:
+ 
+ ```bash
+ python -m src.cavity.cavity_main
+@@ -226,101 +51,117 @@ python -m src.crystal.crystal_main
+ python -m src.opo.opo_main
+ ```
+ 
+-Both scripts are designed to be run interactively in VS Code using `# %%` cells or as plain Python entry points.
++The default results are written under:
++
++```text
++results/<geometry>/cavity/
++results/<geometry>/crystal/
++results/<geometry>/opo/
++```
++
++## Operating Point Concept
++
++The crystal layer evaluates candidate operating points and resolves one active point through `OPERATING_POINT_MODE`.
+ 
+-The cavity script generates geometry-dependent cavity results under `results/<geometry>/cavity/`.  
+-The crystal script loads the cavity output from `results/<geometry>/cavity/cavity_simulation_output.json` and writes crystal results under `results/<geometry>/crystal/`.
++- `phase_matching`: use the phase-matching optimum
++- `double_resonance`: use the double-resonance optimum
+ 
+-## Crystal Workflow
++The crystal export writes one resolved block:
+ 
+-The crystal layer is now organized as a design-oriented OPO workflow.
++- `results.active_for_opo`
+ 
+-In the default `design` mode, the user specifies the target wavelengths, crystal model, and a design temperature. The code then derives the required QPM poling period from the bulk phase-matching condition and uses that derived period for the downstream phase-matching scan, mode matching, and BK analysis.
++This block is the crystal layer's single OPO-facing source of truth. It contains the selected operating-point mode, active temperature, active crystal length, active phase-matching summary, active mode matching, BK summary, and the active polarization-resonance diagnostic.
+ 
+-An `analysis` mode is also available when you want to study a chosen crystal configuration directly using an explicit poling period.
++The OPO layer consumes `results.active_for_opo` first and only falls back to older fields when loading older crystal JSON files.
+ 
+-The crystal simulation also supports an explicit nonlinear interaction-type selection through `PHASE_MATCHING_TYPE` in `src/crystal/crystal_main.py`. The currently supported choices are `type_0`, `type_I`, and `type_II`. The corresponding pump/signal/idler axis assignment is resolved internally by `src/crystal/crystal_materials.py`.
++## Loss Model
+ 
+-The high-level crystal execution order is:
++The cavity layer now uses a reflectivity-based loss model.
+ 
+-1. Load cavity context from `results/<geometry>/cavity/`
+-2. Derive the design poling period from wavelengths and design temperature, or use the configured analysis period
+-3. Scan phase matching versus temperature
+-4. Determine the operating temperature from the phase-matching optimum
+-5. Evaluate the crystal refractive index at that operating temperature
+-6. Compute mode matching
+-7. Run Boyd-Kleinman analysis
+-8. Build structured result and JSON output
+-9. Print a summary
+-10. Generate plots
+-11. Save outputs
++Resonant-field inputs:
+ 
+-The crystal plotting outputs are:
++- `reflectivity_input_resonant`
++- `reflectivity_output_resonant`
++- `alpha_resonant_per_m`
++- `parasitic_roundtrip_loss`
+ 
+-- BK master map
+-- QPM / poling-length map
+-- BK sweep analysis plot
++Derived cavity quantities:
+ 
+-The wavelength sweeps in the BK analysis use fixed pump wavelength and derive the idler from exact three-wave energy conservation.
++- `output_coupling_transmission = 1 - reflectivity_output_resonant`
++- `internal_roundtrip_loss`
++- `kappa_ext_Hz`
++- `kappa_loss_Hz`
++- `kappa_total_Hz`
++- `escape_efficiency = kappa_ext_Hz / kappa_total_Hz`
+ 
+-Shared utilities used by both layers live in:
++For monolithic cavities, the two resonant reflectivities correspond naturally to the two coated crystal facets. The same loss pipeline is used for the other supported geometries.
+ 
+-- `src/common/constants.py`
+-- `src/common/results_paths.py`
++Downstream detection remains separate from cavity escape physics. In the OPO layer, `detection_efficiency` is external to the cavity and is not folded into `kappa_loss_Hz`.
+ 
+-## OPO Workflow
++## Data Flow
+ 
+-The OPO layer consumes the exported cavity and crystal results and builds a compact below-threshold degenerate OPO model. It uses those upstream results to define a physics-informed operating point, constructs a linearized quadrature Langevin model in the `X/P` basis, and produces frequency-domain squeezing spectra.
++The intended interface between layers is:
+ 
+-The OPO model uses a physics-informed nonlinear coupling derived from the crystal effective nonlinearity (`d_eff`), crystal length, mode overlap, and effective mode area.
++1. `cavity` exports geometry, beam waist, FSR, and cavity loss rates
++2. `crystal` consumes cavity results and exports one selected operating point in `active_for_opo`
++3. `opo` consumes cavity loss quantities directly and crystal data from `active_for_opo`
+ 
+-Current OPO capabilities include:
++The OPO layer also checks that the selected crystal length is consistent with the loaded cavity geometry. If the active crystal length differs from `cavity.inputs.crystal_length_m`, OPO fails explicitly instead of silently mixing states.
+ 
+-- crystal-informed nonlinear coupling using `d_eff`, overlap, and mode size
+-- physics-informed threshold modeling using cavity loss and crystal nonlinear coupling
+-- a below-threshold degenerate OPO model
+-- a 2x2 quadrature Langevin model in the `X/P` basis
+-- frequency-dependent squeezing and anti-squeezing spectra
+-- homodyne measurement with configurable LO phase via `lo_phase_rad`
+-- computation of squeezing, anti-squeezing, measured quadrature spectrum, and optimal squeezing phase
++## Output Structure
+ 
+-The current implementation is a compact, below-threshold degenerate OPO model intended for rapid exploration and integration with cavity/crystal simulations. It is not yet a full first-principles quantum input-output treatment.
++Each JSON output is organized around:
+ 
+----
++```json
++{
++  "inputs": { ... },
++  "results": { ... },
++  "debug_data": { ... }
++}
++```
+ 
+-# Design principles
++Guidelines:
+ 
+-- Modular separation of physics layers (cavity → crystal → OPO)
+-- Explicit data flow via JSON outputs
+-- Interactive workflow using `# %%` cells
+-- Minimal dependencies and transparent numerical implementation
++- `inputs`: explicit run configuration and upstream file references
++- `results`: compact downstream-facing data
++- `debug_data`: scans, full diagnostics, internal matrices, and extra plotting payloads
+ 
+----
++Examples:
+ 
+-# Future extensions
++- `cavity/results` contains beam waist, FSR, loss quantities, `kappa_*`, and `escape_efficiency`
++- `crystal/results` contains `selected_operating_point_mode`, `selected_operating_point`, compact `mode_matching`, compact `boyd_kleinman_analysis`, active `polarization_resonance`, and `active_for_opo`
++- `opo/results` contains the OPO operating-point model and squeezing spectrum
++- `opo/debug_data` contains the Langevin matrices
+ 
+-Planned developments include:
++## Plots
+ 
+-- additional crystal-model refinements and validation
+-- further refinement of OPO threshold modeling toward first-principles formulations
+-- improved quantum input-output and noise modeling
+-- quantum noise and detection modeling
++The main scripts also generate plots when enabled by their local flags.
+ 
+-The modular structure of the repository is designed so that each layer (cavity → crystal → OPO) builds directly on the results exported by the previous stage.
++Typical outputs:
+ 
+----
++- `cavity`: stability map, waist map
++- `crystal`: BK master map, BK operating-point plot, optional double-resonance scan
++- `opo`: squeezing spectrum, resonance diagnostic
+ 
+-## Documentation
++The OPO resonance diagnostic plot uses the same active crystal state as the OPO model:
+ 
+-Detailed documentation is available in the `docs/` folder:
++1. `crystal.results.active_for_opo.polarization_resonance`
++2. fallback to older crystal outputs if needed
+ 
+-- architecture overview
+-- cavity theory and outputs
+-- crystal modeling
+-- OPO modeling and squeezing spectra
++## Key Code Locations
+ 
+----
++- [src/cavity/cavity_main.py](src/cavity/cavity_main.py)
++- [src/cavity/cavity_workflow.py](src/cavity/cavity_workflow.py)
++- [src/crystal/crystal_main.py](src/crystal/crystal_main.py)
++- [src/crystal/crystal_workflow.py](src/crystal/crystal_workflow.py)
++- [src/opo/opo_main.py](src/opo/opo_main.py)
++- [src/opo/opo_workflow.py](src/opo/opo_workflow.py)
++- [src/opo/opo_model.py](src/opo/opo_model.py)
+ 
+-# License
++## Development Notes
+ 
+-See the `LICENSE` file for details.
++- Keep cavity-loss calculations in the cavity layer
++- Keep crystal operating-point selection in the crystal layer
++- Keep OPO as a consumer of cavity and crystal exports rather than a reinterpretation layer
++- Prefer explicit field names over legacy aliases or proxy names
++- Put large scans and matrices in `debug_data`, not in compact `results`
+diff --git a/src/cavity/cavity_main.py b/src/cavity/cavity_main.py
+index ccc8730..4e843f3 100644
+--- a/src/cavity/cavity_main.py
++++ b/src/cavity/cavity_main.py
+@@ -52,13 +52,19 @@ GEOMETRY = "monolithic"
+ 
+ c_num = 299792458.0
+ 
+-f_crystal_length = 4.097e-3
++f_crystal_length = 4.0975e-3
+ f_n_crystal = 1.78
+ f_RoC = 10e-3
+ f_wavelength = 1540e-9
+ 
+-f_T_ext = 1.0 - 0.954
+-f_L_rt = 1e-3
++# Resonant-field cavity loss model:
++# R1_resonant is the non-output mirror/facet reflectivity and any transmission
++# through it is treated as internal cavity loss. R2_resonant defines the output
++# coupling. Distributed loss and parasitic round-trip loss remain internal.
++R1_resonant = 0.999
++R2_resonant = 0.954
++alpha_resonant_per_m = 0.0
++L_parasitic_rt = 0.0
+ f_detuning_Hz = 0.0
+ 
+ # Bow-tie parameters
+@@ -83,8 +89,10 @@ parameters = {
+     "f_n_crystal": f_n_crystal,
+     "f_RoC": f_RoC,
+     "f_wavelength": f_wavelength,
+-    "f_T_ext": f_T_ext,
+-    "f_L_rt": f_L_rt,
++    "R1_resonant": R1_resonant,
++    "R2_resonant": R2_resonant,
++    "alpha_resonant_per_m": alpha_resonant_per_m,
++    "L_parasitic_rt": L_parasitic_rt,
+     "f_detuning_Hz": f_detuning_Hz,
+     "f_theta_AOI": f_theta_AOI,
+     "f_L_cav": f_L_cav,
+@@ -157,9 +165,8 @@ derived = compute_cavity_derived_quantities(
+     context,
+     single_point,
+     c_m_per_s=c_num,
+-    T_ext=f_T_ext,
+-    L_rt=f_L_rt,
+     detuning_Hz=f_detuning_Hz,
++    loss_model_parameters=parameters,
+ )
+ print_derived_cavity_quantities(derived)
+ 
+@@ -169,7 +176,6 @@ print_derived_cavity_quantities(derived)
+ cavity_result = build_cavity_simulation_result(context, single_point, derived)
+ simulation_output = build_cavity_simulation_output(cavity_result, c_m_per_s=c_num)
+ saved_outputs = save_cavity_outputs(GEOMETRY, simulation_output, fig_stability, fig_waist)
+-simulation_output["outputs"] = saved_outputs
+ 
+ print(f"Saved simulation output to: {saved_outputs['cavity_output_json']}")
+ print(f"Saved stability map to: {saved_outputs['stability_map_png']}")
+diff --git a/src/cavity/cavity_workflow.py b/src/cavity/cavity_workflow.py
+index 4b74b15..341d3fd 100644
+--- a/src/cavity/cavity_workflow.py
++++ b/src/cavity/cavity_workflow.py
+@@ -25,6 +25,7 @@ from cavity_analysis import (
+     make_m_factor_estimator,
+     make_q_estimator,
+     optical_roundtrip_length,
++    resolve_resonant_loss_model,
+ )
+ from cavity_plotter import print_geometry_ascii
+ 
+@@ -454,11 +455,12 @@ def compute_cavity_derived_quantities(
+     context: CavityContext,
+     operating_point: CavityOperatingPoint,
+     c_m_per_s: float,
+-    T_ext: float,
+-    L_rt: float,
+     detuning_Hz: float,
++    loss_model_parameters: dict[str, Any] | None = None,
++    T_ext: float | None = None,
++    L_rt: float | None = None,
+ ) -> dict[str, float]:
+-    """Compute derived cavity figures for a single cavity operating point."""
++    """Compute derived cavity figures from one explicit resonant loss model."""
+     beam_waist_crystal_um = (
+         beam_waist_from_q(
+             operating_point.qs,
+@@ -472,7 +474,28 @@ def compute_cavity_derived_quantities(
+         operating_point.optical_crystal_length,
+         context.parameters["f_n_crystal"],
+     )
+-    decay = compute_decay_rates(optical_roundtrip_length_m, c_m_per_s, T_ext, L_rt)
++    effective_loss_parameters = dict(context.parameters if loss_model_parameters is None else loss_model_parameters)
++    if T_ext is not None or L_rt is not None:
++        if any(
++            key in effective_loss_parameters
++            for key in ("R1_resonant", "R2_resonant", "alpha_resonant_per_m", "L_parasitic_rt")
++        ):
++            raise ValueError("Do not mix explicit loss_model_parameters with legacy T_ext/L_rt inputs.")
++        if T_ext is not None:
++            effective_loss_parameters["f_T_ext"] = float(T_ext)
++        if L_rt is not None:
++            effective_loss_parameters["f_L_rt"] = float(L_rt)
++
++    loss_model = resolve_resonant_loss_model(
++        effective_loss_parameters,
++        roundtrip_propagation_length_m=operating_point.cavity_length,
++    )
++    decay = compute_decay_rates(
++        optical_roundtrip_length_m,
++        c_m_per_s,
++        output_coupling_transmission=float(loss_model["output_coupling_transmission"]),
++        internal_roundtrip_loss=float(loss_model["internal_roundtrip_loss"]),
++    )
+     gouy = gouy_phases_from_m_factor(context.geometry, operating_point.m_factor)
+ 
+     return {
+@@ -481,8 +504,22 @@ def compute_cavity_derived_quantities(
+         "optical_crystal_length_m": float(operating_point.optical_crystal_length),
+         "optical_roundtrip_length_m": float(optical_roundtrip_length_m),
+         "fsr_Hz": float(fsr_from_roundtrip_length(optical_roundtrip_length_m, c_m_per_s)),
++        "loss_model_source": str(loss_model["loss_model_source"]),
++        "roundtrip_propagation_length_m": float(loss_model["roundtrip_propagation_length_m"]),
++        "reflectivity_input_resonant": float(loss_model["reflectivity_input_resonant"]),
++        "reflectivity_output_resonant": float(loss_model["reflectivity_output_resonant"]),
++        "input_coupler_transmission": float(loss_model["input_coupler_transmission"]),
++        "output_coupling_transmission": float(loss_model["output_coupling_transmission"]),
++        "alpha_resonant_per_m": float(loss_model["alpha_resonant_per_m"]),
++        "bulk_roundtrip_loss": float(loss_model["bulk_roundtrip_loss"]),
++        "parasitic_roundtrip_loss": float(loss_model["parasitic_roundtrip_loss"]),
++        "internal_roundtrip_loss": float(loss_model["internal_roundtrip_loss"]),
+         "kappa_ext_rad_s": decay["kappa_ext_rad_s"],
++        "kappa_ext_Hz": decay["kappa_ext_Hz"],
+         "kappa_loss_rad_s": decay["kappa_loss_rad_s"],
++        "kappa_loss_Hz": decay["kappa_loss_Hz"],
++        "kappa_int_rad_s": decay["kappa_int_rad_s"],
++        "kappa_int_Hz": decay["kappa_int_Hz"],
+         "kappa_total_rad_s": decay["kappa_total_rad_s"],
+         "kappa_total_Hz": decay["kappa_total_Hz"],
+         "escape_efficiency": decay["escape_efficiency"],
+@@ -502,9 +539,10 @@ def compute_derived_cavity_quantities(
+     wavelength: float,
+     n_crystal: float,
+     c_m_per_s: float,
+-    T_ext: float,
+-    L_rt: float,
+     detuning_Hz: float,
++    T_ext: float | None = None,
++    L_rt: float | None = None,
++    loss_model_parameters: dict[str, Any] | None = None,
+ ) -> dict[str, float]:
+     """Backward-compatible wrapper for derived cavity figures."""
+     context = build_cavity_context(
+@@ -527,9 +565,10 @@ def compute_derived_cavity_quantities(
+         context,
+         operating_point,
+         c_m_per_s=c_m_per_s,
++        detuning_Hz=detuning_Hz,
+         T_ext=T_ext,
+         L_rt=L_rt,
+-        detuning_Hz=detuning_Hz,
++        loss_model_parameters=loss_model_parameters,
+     )
+ 
+ 
+@@ -613,22 +652,32 @@ def print_derived_cavity_quantities(results: dict[str, float]) -> None:
+             print(f"{label:<32}: {value}")
+ 
+     detuning_hz = results["detuning_rad_s"] / (2.0 * np.pi)
+-    kappa_ext_hz = results["kappa_ext_rad_s"] / (2.0 * np.pi)
+-    kappa_loss_hz = results["kappa_loss_rad_s"] / (2.0 * np.pi)
+     _print_specs(
+         "Derived cavity figures",
+         [
+             ("Beam waist in crystal", f"{results['beam_waist_crystal_um']:.3f} um"),
+             ("Geometric cavity length", f"{results['cavity_length_m']:.6f} m"),
+             ("Optical round-trip length", f"{results['optical_roundtrip_length_m']:.6f} m"),
++            (
++                "Reflectivity (input/output)",
++                f"{results['reflectivity_input_resonant']:.6f} / {results['reflectivity_output_resonant']:.6f}",
++            ),
++            (
++                "Transmission (input/output)",
++                f"{results['input_coupler_transmission']:.6e} / {results['output_coupling_transmission']:.6e}",
++            ),
++            ("Distributed loss coeff.", f"{results['alpha_resonant_per_m']:.6e} 1/m"),
++            ("Bulk round-trip loss", f"{results['bulk_roundtrip_loss']:.6e}"),
++            ("Parasitic round-trip loss", f"{results['parasitic_roundtrip_loss']:.6e}"),
++            ("Internal round-trip loss", f"{results['internal_roundtrip_loss']:.6e}"),
+             ("FSR", f"{results['fsr_Hz']:.6f} Hz ({results['fsr_Hz']/1e6:.6f} MHz)"),
+             (
+                 "kappa_ext",
+-                f"{results['kappa_ext_rad_s']:.3e} rad/s (kappa_ext/2pi = {kappa_ext_hz:.3e} Hz)",
++                f"{results['kappa_ext_rad_s']:.3e} rad/s (kappa_ext/2pi = {results['kappa_ext_Hz']:.3e} Hz)",
+             ),
+             (
+                 "kappa_loss",
+-                f"{results['kappa_loss_rad_s']:.3e} rad/s (kappa_loss/2pi = {kappa_loss_hz:.3e} Hz)",
++                f"{results['kappa_loss_rad_s']:.3e} rad/s (kappa_loss/2pi = {results['kappa_loss_Hz']:.3e} Hz)",
+             ),
+             (
+                 "kappa_total",
+@@ -674,36 +723,44 @@ def build_cavity_simulation_output(
+     geometry_inputs, m_factor_export = build_geometry_inputs_for_export(result.context.geometry, result.operating_point)
+     derived = result.derived_quantities
+ 
+-    return {
+-        "geometry": result.context.geometry,
+-        "constants": {"c_m_per_s": float(c_m_per_s)},
++    output = {
+         "inputs": {
++            "geometry": result.context.geometry,
++            "c_m_per_s": float(c_m_per_s),
+             "crystal_length_m": float(parameters["f_crystal_length"]),
+             "n_crystal": float(parameters["f_n_crystal"]),
+             "RoC_m": float(result.operating_point.geometry_values.get("RoC_m", parameters["f_RoC"])),
+             "wavelength_m": float(parameters["f_wavelength"]),
+-            "T_ext": float(parameters["f_T_ext"]),
+-            "L_rt": float(parameters["f_L_rt"]),
++            "reflectivity_input_resonant": float(derived["reflectivity_input_resonant"]),
++            "reflectivity_output_resonant": float(derived["reflectivity_output_resonant"]),
++            "alpha_resonant_per_m": float(derived["alpha_resonant_per_m"]),
++            "parasitic_roundtrip_loss": float(derived["parasitic_roundtrip_loss"]),
++            "T_ext": float(derived["output_coupling_transmission"]),
++            "L_rt": float(derived["internal_roundtrip_loss"]),
+             "detuning_Hz": float(parameters["f_detuning_Hz"]),
+             "geometry_specific": geometry_inputs,
+         },
+         "results": {
+-            "q_sagittal": {
+-                "real": float(np.real(result.operating_point.qs)),
+-                "imag": float(np.imag(result.operating_point.qs)),
+-            },
+-            "q_tangential": {
+-                "real": float(np.real(result.operating_point.qt)),
+-                "imag": float(np.imag(result.operating_point.qt)),
+-            },
+-            "m_factor": m_factor_export,
+             "beam_waist_crystal_um": float(derived["beam_waist_crystal_um"]),
+             "cavity_length_m": float(derived["cavity_length_m"]),
+             "optical_crystal_length_m": float(derived["optical_crystal_length_m"]),
+             "optical_roundtrip_length_m": float(derived["optical_roundtrip_length_m"]),
+             "fsr_Hz": float(derived["fsr_Hz"]),
++            "loss_model_source": str(derived["loss_model_source"]),
++            "roundtrip_propagation_length_m": float(derived["roundtrip_propagation_length_m"]),
++            "reflectivity_input_resonant": float(derived["reflectivity_input_resonant"]),
++            "reflectivity_output_resonant": float(derived["reflectivity_output_resonant"]),
++            "input_coupler_transmission": float(derived["input_coupler_transmission"]),
++            "output_coupling_transmission": float(derived["output_coupling_transmission"]),
++            "bulk_roundtrip_loss": float(derived["bulk_roundtrip_loss"]),
++            "parasitic_roundtrip_loss": float(derived["parasitic_roundtrip_loss"]),
++            "internal_roundtrip_loss": float(derived["internal_roundtrip_loss"]),
+             "kappa_ext_rad_s": float(derived["kappa_ext_rad_s"]),
++            "kappa_ext_Hz": float(derived["kappa_ext_Hz"]),
+             "kappa_loss_rad_s": float(derived["kappa_loss_rad_s"]),
++            "kappa_loss_Hz": float(derived["kappa_loss_Hz"]),
++            "kappa_int_rad_s": float(derived["kappa_int_rad_s"]),
++            "kappa_int_Hz": float(derived["kappa_int_Hz"]),
+             "kappa_total_rad_s": float(derived["kappa_total_rad_s"]),
+             "kappa_total_Hz": float(derived["kappa_total_Hz"]),
+             "escape_efficiency": float(derived["escape_efficiency"]),
+@@ -711,7 +768,19 @@ def build_cavity_simulation_output(
+             "gouy_phase_sagittal_rad": float(derived["gouy_phase_sagittal_rad"]),
+             "gouy_phase_tangential_rad": float(derived["gouy_phase_tangential_rad"]),
+         },
++        "debug_data": {
++            "q_sagittal": {
++                "real": float(np.real(result.operating_point.qs)),
++                "imag": float(np.imag(result.operating_point.qs)),
++            },
++            "q_tangential": {
++                "real": float(np.real(result.operating_point.qt)),
++                "imag": float(np.imag(result.operating_point.qt)),
++            },
++            "m_factor": m_factor_export,
++        },
+     }
++    return output
+ 
+ 
+ def save_cavity_outputs(
+@@ -742,7 +811,6 @@ def save_cavity_outputs(
+         "stability_map_png": _repo_relative(stability_path),
+         "waist_map_png": _repo_relative(waist_path),
+     }
+-    output["outputs"] = outputs_info
+ 
+     with json_path.open("w", encoding="utf-8") as f:
+         json.dump(output, f, indent=2)
+diff --git a/src/crystal/crystal_main.py b/src/crystal/crystal_main.py
+index d435994..8e46e0c 100644
+--- a/src/crystal/crystal_main.py
++++ b/src/crystal/crystal_main.py
+@@ -8,6 +8,7 @@ cavity → crystal → phase matching → mode matching → BK analysis → plot
+ 
+ from __future__ import annotations
+ 
++import inspect
+ import json
+ from pathlib import Path
+ from typing import Any
+@@ -135,6 +136,9 @@ T0_K = 293.15              # Reference temperature [K] for thermo-optic / therma
+ ALPHA_PER_K = 6.7e-6       # Approximate linear thermal expansion coefficient [1/K] for KTP-family crystals
+ QPM_ORDER_M = 1            # Quasi-phase-matching order m (m = 1 is first-order QPM)
+ SAVE_OUTPUTS = True        # If True, save JSON results and plots to disk
++DEBUG = False
++STORE_BK_MAP = False
++SAVE_FULL_DOUBLE_RESONANCE_SCAN = False
+ 
+ # Plot controls (enable individually)
+ ENABLE_PLOT_BK_MASTER = True
+@@ -305,6 +309,43 @@ selected_operating_point = select_crystal_operating_point(
+ # in the operating-point blocks, but the loaded cavity context is not mutated
+ # here; only the active temperature is propagated downstream in this workflow.
+ active_operating_temperature_K = float(selected_operating_point["temperature_K"])
++
++active_polarization_resonance = compute_polarization_resonance_diagnostic(
++    cavity_data=context.cavity_data,
++    temperature_K=active_operating_temperature_K,
++    signal_axis=phase_config.signal_axis,
++    idler_axis=phase_config.idler_axis,
++    wavelength_s_m=WAVELENGTH_S_M,
++    wavelength_i_m=WAVELENGTH_I_M,
++    n_s_of_lambda_T=n_s_of_lambda_T,
++    n_i_of_lambda_T=n_i_of_lambda_T,
++)
++
++# `phase` is the full phase-matching scan; `phase_active` is the same
++# phase-matching evaluation collapsed to the selected operating temperature.
++phase_active = compute_crystal_phase_matching(
++    context,
++    n_p_of_T=n_p_of_T,
++    n_s_of_T=n_s_of_T,
++    n_i_of_T=n_i_of_T,
++    wavelength_p_m=WAVELENGTH_P_M,
++    wavelength_s_m=WAVELENGTH_S_M,
++    wavelength_i_m=WAVELENGTH_I_M,
++    Lambda0_m=Lambda0_m,
++    T_min_K=active_operating_temperature_K,
++    T_max_K=active_operating_temperature_K,
++    n_T=1,
++    T0_K=T0_K,
++    alpha_perK=ALPHA_PER_K,
++    qpm_order_m=QPM_ORDER_M,
++)
++phase_active["phase_matching_type"] = phase_config.phase_matching_type
++phase_active["pump_axis"] = phase_config.pump_axis
++phase_active["signal_axis"] = phase_config.signal_axis
++phase_active["idler_axis"] = phase_config.idler_axis
++phase_active["d_eff_pm_per_V"] = d_eff_config.d_eff_pm_per_V
++phase_active["d_eff_notes"] = list(d_eff_config.notes)
++
+ mode_matching_n_crystal = float(
+     signal_axis_model(
+         WAVELENGTH_S_M,
+@@ -325,7 +366,7 @@ mode = compute_crystal_mode_matching(
+ 
+ bk_data = compute_boyd_kleinman_analysis(
+     context=context,
+-    phase_matching=phase,
++    phase_matching=phase_active,
+     mode_matching=mode,
+     n_p_of_T=n_p_of_T,
+     n_s_of_T=n_s_of_T,
+@@ -350,11 +391,13 @@ result = build_crystal_simulation_result(
+     context=context,
+     phase_matching=phase,
+     mode_matching=mode,
++    selected_operating_phase_matching=phase_active,
+     phase_matching_operating_point=phase_matching_operating_point,
+     double_resonance_operating_point=double_resonance_operating_point,
+     selected_operating_point_mode=OPERATING_POINT_MODE,
+     selected_operating_point=selected_operating_point,
+     polarization_resonance=phase_matching_resonance_diagnostic,
++    active_polarization_resonance=active_polarization_resonance,
+     double_resonance_scan=double_resonance_scan,
+     bk_analysis=bk_data,
+ )
+@@ -367,7 +410,12 @@ print_crystal_summary(result)
+ # %%
+ # Build simulation output
+ 
+-output = build_crystal_simulation_output(result)
++output = build_crystal_simulation_output(
++    result,
++    save_full_double_resonance_scan=SAVE_FULL_DOUBLE_RESONANCE_SCAN,
++    debug=DEBUG,
++    store_bk_map=STORE_BK_MAP,
++)
+ output["inputs"]["crystal_model"] = CRYSTAL_MODEL
+ output["inputs"]["n_crystal"] = mode_matching_n_crystal
+ output["inputs"]["phase_matching_mode"] = PHASE_MATCHING_MODE
+@@ -380,6 +428,7 @@ output["inputs"]["d_eff_notes"] = list(d_eff_config.notes)
+ output["inputs"]["operating_point_mode"] = OPERATING_POINT_MODE
+ output["inputs"]["design_temperature_K"] = DESIGN_TEMPERATURE_K if PHASE_MATCHING_MODE == "design" else None
+ output["inputs"]["Lambda0_m"] = Lambda0_m
++output["inputs"]["store_bk_map"] = STORE_BK_MAP
+ if design_poling is not None:
+     output["inputs"]["delta_k_bulk_design_rad_per_m"] = design_poling.delta_k_bulk_rad_per_m
+ 
+@@ -397,13 +446,29 @@ bk_analysis_operating = bk_data.get("bk_analysis_operating", bk_data)
+ bk_analysis_optimal = bk_data.get("bk_analysis_optimal")
+ 
+ if ENABLE_PLOT_BK_MASTER:
+-    fig_bk_master = plot_bk_master_map_sigma_xi(
+-        bk_data,
+-        operating_point={
+-            "xi_reference": bk_data["reference"]["xi_reference"],
+-            "sigma_reference": bk_data["reference"]["sigma_reference"],
+-        },
+-    )
++    if OPERATING_POINT_MODE == "phase_matching":
++        selected_operating_point_label = "Phase-matching operating point"
++    elif OPERATING_POINT_MODE == "double_resonance":
++        selected_operating_point_label = "Double-resonance operating point"
++    else:
++        selected_operating_point_label = "Operating point"
++
++    bk_master_operating_point = {
++        "xi_reference": bk_analysis_operating["reference"]["xi_reference"],
++        "sigma_reference": bk_analysis_operating["reference"]["sigma_reference"],
++    }
++    plot_signature = inspect.signature(plot_bk_master_map_sigma_xi)
++    if "operating_point_label" in plot_signature.parameters:
++        fig_bk_master = plot_bk_master_map_sigma_xi(
++            bk_analysis_operating,
++            operating_point=bk_master_operating_point,
++            operating_point_label=selected_operating_point_label,
++        )
++    else:
++        fig_bk_master = plot_bk_master_map_sigma_xi(
++            bk_analysis_operating,
++            operating_point=bk_master_operating_point,
++        )
+ 
+ if ENABLE_PLOT_BK:
+     fig_bk = plot_boyd_kleinman_analysis(
+@@ -421,7 +486,7 @@ if ENABLE_PLOT_DOUBLE_RESONANCE and double_resonance_scan is not None:
+     fig_double_resonance = plot_double_resonance_scan(double_resonance_scan)
+ 
+ if ENABLE_PLOT_QPM:
+-    fig_qpm = plot_qpm_length_poling_map(bk_data)
++    fig_qpm = plot_qpm_length_poling_map(bk_analysis_operating)
+ 
+ # %%
+ # Save outputs
+diff --git a/src/crystal/crystal_workflow.py b/src/crystal/crystal_workflow.py
+index 0df565a..169393c 100644
+--- a/src/crystal/crystal_workflow.py
++++ b/src/crystal/crystal_workflow.py
+@@ -25,12 +25,20 @@ from .crystal_mode_matching import (
+ from .crystal_boyd_kleinman import (
+     BKAnalysisConfig,
+     bk_analysis_result_to_dict,
+-    run_bk_analysis,
+     run_bk_analysis_pair,
+ )
+ from .crystal_phase_matching import compute_design_poling_period as compute_design_poling_period_from_material_model
+ from .crystal_phase_matching import scan_phase_matching_vs_temperature
+ 
++_BK_MAP_KEYS = frozenset(
++    {
++        "bk_master_sigma_values",
++        "bk_master_xi_values",
++        "bk_master_h_map",
++    }
++)
++_CRYSTAL_LENGTH_MATCH_TOLERANCE_M = 1e-9
++
+ 
+ @dataclass(frozen=True)
+ class CrystalContext:
+@@ -52,11 +60,13 @@ class CrystalSimulationResult:
+     context: CrystalContext
+     phase_matching: dict[str, Any]
+     mode_matching: ModeMatchingResult
++    selected_operating_phase_matching: dict[str, Any] | None = None
+     phase_matching_operating_point: dict[str, Any] | None = None
+     double_resonance_operating_point: dict[str, Any] | None = None
+     selected_operating_point_mode: str | None = None
+     selected_operating_point: dict[str, Any] | None = None
+     polarization_resonance: dict[str, Any] | None = None
++    active_polarization_resonance: dict[str, Any] | None = None
+     double_resonance_scan: dict[str, Any] | None = None
+     bk_analysis: dict[str, Any] | None = None
+ 
+@@ -86,7 +96,7 @@ def load_cavity_context_for_crystal(
+         raise ValueError("Cavity output missing results.beam_waist_crystal_um")
+ 
+     return CrystalContext(
+-        geometry=cavity_data.get("geometry", geometry),
++        geometry=str(cavity_data.get("geometry", inputs.get("geometry", geometry))),
+         cavity_output_path=str(Path(cavity_output_path)),
+         crystal_length_m=float(inputs["crystal_length_m"]),
+         wavelength_m=float(inputs["wavelength_m"]),
+@@ -105,9 +115,14 @@ def _to_json_compatible(value: Any) -> Any:
+     if isinstance(value, dict):
+         return {key: _to_json_compatible(item) for key, item in value.items()}
+     if isinstance(value, (list, tuple)):
+-        return [_to_json_compatible(item) for item in value]
++        items = [_to_json_compatible(item) for item in value]
++        if len(items) == 1 and isinstance(items[0], (bool, int, float)) and not isinstance(items[0], str):
++            return items[0]
++        return items
+     if isinstance(value, np.ndarray):
+-        return value.tolist()
++        if value.ndim == 0 or value.size == 1:
++            return _to_json_compatible(value.reshape(-1)[0].item())
++        return _to_json_compatible(value.tolist())
+     if isinstance(value, np.generic):
+         return value.item()
+     if isinstance(value, Path):
+@@ -240,21 +255,27 @@ def compute_boyd_kleinman_analysis(
+     )
+     bk_operating = bk_analysis_result_to_dict(bk_results["bk_analysis_operating"])
+     bk_optimal = bk_analysis_result_to_dict(bk_results["bk_analysis_optimal"])
+-    payload = dict(bk_operating)
+-    payload["bk_analysis_operating"] = bk_operating
+-    payload["bk_analysis_optimal"] = bk_optimal
+-    return payload
++    return {
++        "reference": bk_operating.get("reference", {}),
++        "bk_master_sigma_opt": bk_operating.get("bk_master_sigma_opt"),
++        "bk_master_xi_opt": bk_operating.get("bk_master_xi_opt"),
++        "bk_master_h_opt": bk_operating.get("bk_master_h_opt"),
++        "bk_analysis_operating": bk_operating,
++        "bk_analysis_optimal": bk_optimal,
++    }
+ 
+ 
+ def build_crystal_simulation_result(
+     context: CrystalContext,
+     phase_matching: dict[str, Any],
+     mode_matching: ModeMatchingResult,
++    selected_operating_phase_matching: dict[str, Any] | None = None,
+     phase_matching_operating_point: dict[str, Any] | None = None,
+     double_resonance_operating_point: dict[str, Any] | None = None,
+     selected_operating_point_mode: str | None = None,
+     selected_operating_point: dict[str, Any] | None = None,
+     polarization_resonance: dict[str, Any] | None = None,
++    active_polarization_resonance: dict[str, Any] | None = None,
+     double_resonance_scan: dict[str, Any] | None = None,
+     bk_analysis: dict[str, Any] | None = None,
+ ) -> CrystalSimulationResult:
+@@ -263,11 +284,13 @@ def build_crystal_simulation_result(
+         context=context,
+         phase_matching=phase_matching,
+         mode_matching=mode_matching,
++        selected_operating_phase_matching=selected_operating_phase_matching,
+         phase_matching_operating_point=phase_matching_operating_point,
+         double_resonance_operating_point=double_resonance_operating_point,
+         selected_operating_point_mode=selected_operating_point_mode,
+         selected_operating_point=selected_operating_point,
+         polarization_resonance=polarization_resonance,
++        active_polarization_resonance=active_polarization_resonance,
+         double_resonance_scan=double_resonance_scan,
+         bk_analysis=bk_analysis,
+     )
+@@ -404,6 +427,14 @@ def print_crystal_summary(result: CrystalSimulationResult) -> None:
+         print(f"Selected operating point mode: {result.selected_operating_point_mode}")
+     if result.selected_operating_point is not None:
+         print(f"Active operating temperature: {float(result.selected_operating_point['temperature_K']):.3f} K")
++        active_crystal_length_m = float(result.selected_operating_point.get("crystal_length_m", result.context.crystal_length_m))
++        if abs(active_crystal_length_m - float(result.context.crystal_length_m)) > _CRYSTAL_LENGTH_MATCH_TOLERANCE_M:
++            print(
++                "Selected crystal length differs from loaded cavity geometry; "
++                f"rerun cavity with {active_crystal_length_m * 1e3:.6f} mm before OPO."
++            )
++    if result.active_polarization_resonance is not None:
++        print("Active polarization-resonance diagnostic evaluated at selected operating temperature.")
+ 
+     if bk_analysis is not None:
+         reference = bk_analysis.get("reference", {})
+@@ -434,35 +465,246 @@ def _build_crystal_inputs_payload(context: CrystalContext) -> dict[str, Any]:
+     }
+ 
+ 
+-def _build_crystal_results_payload(result: CrystalSimulationResult) -> dict[str, Any]:
++def _build_mode_matching_payload(mode_matching: ModeMatchingResult) -> dict[str, float]:
++    return {
++        "focusing_parameter_xi": float(mode_matching.focusing_parameter_xi),
++        "boyd_kleinman_factor": float(mode_matching.boyd_kleinman_factor),
++        "effective_nonlinear_overlap": float(mode_matching.effective_nonlinear_overlap),
++    }
++
++
++def _build_mode_matching_debug_payload(mode_matching: ModeMatchingResult) -> dict[str, float]:
++    return asdict(mode_matching)
++
++
++def _build_mode_matching_active_payload(mode_matching: ModeMatchingResult) -> dict[str, float]:
++    return {
++        "waist_crystal_m": float(mode_matching.waist_crystal_m),
++        "rayleigh_range_m": float(mode_matching.rayleigh_range_m),
++        "confocal_parameter_m": float(mode_matching.confocal_parameter_m),
++        "focusing_parameter_xi": float(mode_matching.focusing_parameter_xi),
++        "boyd_kleinman_factor": float(mode_matching.boyd_kleinman_factor),
++        "effective_nonlinear_overlap": float(mode_matching.effective_nonlinear_overlap),
++    }
++
++
++def _strip_bk_map_payload(value: Any, store_bk_map: bool) -> Any:
++    if isinstance(value, dict):
++        return {
++            key: _strip_bk_map_payload(item, store_bk_map)
++            for key, item in value.items()
++            if store_bk_map or key not in _BK_MAP_KEYS
++        }
++    if isinstance(value, list):
++        return [_strip_bk_map_payload(item, store_bk_map) for item in value]
++    if isinstance(value, tuple):
++        return tuple(_strip_bk_map_payload(item, store_bk_map) for item in value)
++    return value
++
++
++def _build_bk_summary_payload(
++    bk_analysis: dict[str, Any],
++    *,
++    store_bk_map: bool,
++) -> dict[str, Any]:
++    reference = bk_analysis.get("reference", {})
+     payload = {
+-        "phase_matching": result.phase_matching,
+-        "mode_matching": asdict(result.mode_matching),
++        "store_bk_map": bool(store_bk_map),
+     }
+-    if result.phase_matching_operating_point is not None:
+-        payload["phase_matching_operating_point"] = result.phase_matching_operating_point
+-    if result.double_resonance_operating_point is not None:
+-        payload["double_resonance_operating_point"] = result.double_resonance_operating_point
++    if reference:
++        payload["reference"] = {
++            key: reference[key]
++            for key in (
++                "reference_kind",
++                "T_opt_K",
++                "crystal_length_m",
++                "xi_reference",
++                "sigma_reference",
++                "bk_reference_factor",
++            )
++            if key in reference
++        }
++    for key in ("bk_master_sigma_opt", "bk_master_xi_opt", "bk_master_h_opt"):
++        if key in bk_analysis:
++            payload[key] = bk_analysis[key]
++    if store_bk_map:
++        operating = bk_analysis.get("bk_analysis_operating", {})
++        for key in _BK_MAP_KEYS:
++            if key in operating:
++                payload[key] = operating[key]
++    return payload
++
++
++def _build_bk_debug_payload(
++    bk_analysis: dict[str, Any],
++    *,
++    store_bk_map: bool,
++) -> dict[str, Any]:
++    payload = _build_bk_summary_payload(bk_analysis, store_bk_map=store_bk_map)
++    for key in ("bk_analysis_operating", "bk_analysis_optimal"):
++        if key in bk_analysis:
++            payload[key] = _strip_bk_map_payload(bk_analysis[key], store_bk_map=store_bk_map)
++    return payload
++
++
++def _build_active_for_opo_payload(
++    result: CrystalSimulationResult,
++    *,
++    store_bk_map: bool,
++) -> dict[str, Any] | None:
++    if result.selected_operating_point_mode is None:
++        return None
++
++    cavity_crystal_length_m = float(result.context.crystal_length_m)
++    selected_operating_point = result.selected_operating_point or {}
++    active_crystal_length_m = float(selected_operating_point.get("crystal_length_m", cavity_crystal_length_m))
++    active_for_opo = {
++        "operating_point_mode": result.selected_operating_point_mode,
++        "temperature_K": float(selected_operating_point.get("temperature_K", np.nan)),
++        "crystal_length_m": active_crystal_length_m,
++        "phase_matching": (
++            {
++                key: result.selected_operating_phase_matching[key]
++                for key in (
++                    "T_K",
++                    "n_p",
++                    "n_s",
++                    "n_i",
++                    "delta_k_rad_per_m",
++                    "delta_k_eff_rad_per_m",
++                    "pm_power",
++                    "phase_matching_type",
++                    "pump_axis",
++                    "signal_axis",
++                    "idler_axis",
++                    "d_eff_pm_per_V",
++                )
++                if result.selected_operating_phase_matching is not None and key in result.selected_operating_phase_matching
++            }
++            if result.selected_operating_phase_matching is not None
++            else None
++        ),
++        "mode_matching": _build_mode_matching_active_payload(result.mode_matching),
++        "boyd_kleinman_analysis": (
++            _build_bk_summary_payload(result.bk_analysis, store_bk_map=store_bk_map)
++            if result.bk_analysis is not None
++            else None
++        ),
++        "polarization_resonance": result.active_polarization_resonance,
++        "cavity_crystal_length_m": cavity_crystal_length_m,
++        "crystal_length_matches_cavity": bool(
++            abs(active_crystal_length_m - cavity_crystal_length_m) <= _CRYSTAL_LENGTH_MATCH_TOLERANCE_M
++        ),
++        "recommended_cavity_crystal_length_m": active_crystal_length_m,
++    }
++    return {key: value for key, value in active_for_opo.items() if value is not None}
++
++
++def _build_crystal_results_payload(
++    result: CrystalSimulationResult,
++    *,
++    store_bk_map: bool,
++) -> dict[str, Any]:
++    payload: dict[str, Any] = {}
+     if result.selected_operating_point_mode is not None:
+         payload["selected_operating_point_mode"] = result.selected_operating_point_mode
+     if result.selected_operating_point is not None:
+         payload["selected_operating_point"] = result.selected_operating_point
++    payload["mode_matching"] = _build_mode_matching_payload(result.mode_matching)
++    if result.bk_analysis is not None:
++        payload["boyd_kleinman_analysis"] = _build_bk_summary_payload(
++            result.bk_analysis,
++            store_bk_map=store_bk_map,
++        )
++    if result.active_polarization_resonance is not None:
++        payload["polarization_resonance"] = result.active_polarization_resonance
++    active_for_opo = _build_active_for_opo_payload(result, store_bk_map=store_bk_map)
++    if active_for_opo is not None:
++        payload["active_for_opo"] = active_for_opo
++    return payload
++
++
++def _build_double_resonance_scan_payload(
++    scan: dict[str, Any],
++    include_full_matrices: bool = False,
++) -> dict[str, Any]:
++    payload = {
++        "temperature_grid_K": scan["temperature_grid_K"],
++        "crystal_length_grid_m": scan["crystal_length_grid_m"],
++        "resonance_tolerance_rad": float(scan["resonance_tolerance_rad"]),
++        "best_temperature_K": float(scan["best_temperature_K"]),
++        "best_crystal_length_m": float(scan["best_crystal_length_m"]),
++        "best_delta_phi_wrapped_rad": float(scan["best_delta_phi_wrapped_rad"]),
++        "best_abs_delta_phi_wrapped_rad": float(scan["best_abs_delta_phi_wrapped_rad"]),
++        "best_is_double_resonant": bool(scan["best_is_double_resonant"]),
++    }
++    if include_full_matrices:
++        payload["delta_phi_wrapped_rad"] = scan["delta_phi_wrapped_rad"]
++        payload["abs_delta_phi_wrapped_rad"] = scan["abs_delta_phi_wrapped_rad"]
++        payload["is_double_resonant"] = scan["is_double_resonant"]
++    return payload
++
++
++def _build_crystal_debug_payload(
++    result: CrystalSimulationResult,
++    *,
++    save_full_double_resonance_scan: bool = False,
++    store_bk_map: bool = False,
++) -> dict[str, Any]:
++    payload = {}
++    payload["mode_matching"] = _build_mode_matching_debug_payload(result.mode_matching)
++    if result.selected_operating_phase_matching is not None:
++        payload["active_phase_matching"] = result.selected_operating_phase_matching
++    operating_points = {}
++    if result.phase_matching_operating_point is not None:
++        operating_points["phase_matching_operating_point"] = result.phase_matching_operating_point
++    if result.double_resonance_operating_point is not None:
++        operating_points["double_resonance_operating_point"] = result.double_resonance_operating_point
++    if operating_points:
++        payload["operating_points"] = operating_points
+     if result.polarization_resonance is not None:
+-        payload["polarization_resonance"] = result.polarization_resonance
++        payload["phase_matching_polarization_resonance"] = result.polarization_resonance
++    if result.phase_matching is not None:
++        payload["phase_matching_scan"] = result.phase_matching
+     if result.double_resonance_scan is not None:
+-        payload["double_resonance_scan"] = result.double_resonance_scan
++        payload["double_resonance_scan"] = _build_double_resonance_scan_payload(
++            result.double_resonance_scan,
++            include_full_matrices=save_full_double_resonance_scan,
++        )
+     if result.bk_analysis is not None:
+-        payload["boyd_kleinman_analysis"] = result.bk_analysis
++        payload["boyd_kleinman_analysis"] = _build_bk_debug_payload(
++            result.bk_analysis,
++            store_bk_map=store_bk_map,
++        )
+     return payload
+ 
+ 
+-def build_crystal_simulation_output(result: CrystalSimulationResult) -> dict[str, Any]:
++def build_crystal_simulation_output(
++    result: CrystalSimulationResult,
++    save_full_double_resonance_scan: bool = False,
++    debug: bool = False,
++    store_bk_map: bool = False,
++) -> dict[str, Any]:
+     """Build JSON-serializable crystal simulation output."""
+-    return {
+-        "geometry": result.context.geometry,
+-        "inputs": _build_crystal_inputs_payload(result.context),
+-        "results": _build_crystal_results_payload(result),
++    output = {
++        "inputs": {
++            "geometry": result.context.geometry,
++            **_build_crystal_inputs_payload(result.context),
++        },
++        "results": _build_crystal_results_payload(
++            result,
++            store_bk_map=store_bk_map,
++        ),
+     }
++    if debug:
++        debug_payload = _build_crystal_debug_payload(
++            result,
++            save_full_double_resonance_scan=save_full_double_resonance_scan,
++            store_bk_map=store_bk_map,
++        )
++        if debug_payload:
++            output["debug_data"] = debug_payload
++    return output
+ 
+ 
+ def save_crystal_outputs(
+@@ -471,43 +713,11 @@ def save_crystal_outputs(
+     fig_bk_master=None,
+     fig_qpm=None,
+     fig_bk=None,
+-    legacy_fig_unused=None,
+     results_root: str | Path | None = None,
+     fig_bk_optimal=None,
+     fig_double_resonance_scan=None,
+ ) -> dict[str, str]:
+     """Save crystal JSON and plots under ``results/<geometry>/crystal/``."""
+-    # Backward compatibility:
+-    # `save_crystal_outputs(geometry, output, fig_bk)`
+-    # `save_crystal_outputs(geometry, output, fig_phase, fig_mode)`
+-    # `save_crystal_outputs(geometry, output, fig_bk_master, fig_qpm, fig_bk)`
+-    if fig_bk is None and fig_qpm is None and fig_bk_master is not None and hasattr(fig_bk_master, "savefig"):
+-        fig_bk = fig_bk_master
+-        fig_bk_master = None
+-
+-    if results_root is None and isinstance(legacy_fig_unused, (str, Path)):
+-        results_root = legacy_fig_unused
+-        legacy_fig_unused = None
+-
+-    if fig_bk is None and fig_qpm is not None and hasattr(fig_qpm, "savefig"):
+-        fig_bk = fig_qpm
+-        fig_qpm = None
+-
+-    if (
+-        fig_bk is not None
+-        and fig_qpm is not None
+-        and hasattr(fig_bk_master, "savefig")
+-        and hasattr(fig_qpm, "savefig")
+-        and not hasattr(fig_bk, "savefig")
+-    ):
+-        fig_bk = fig_qpm
+-        fig_qpm = None
+-
+-    if results_root is None and legacy_fig_unused is not None and not isinstance(legacy_fig_unused, (str, Path)):
+-        if fig_bk is None and hasattr(legacy_fig_unused, "savefig"):
+-            fig_bk = legacy_fig_unused
+-        legacy_fig_unused = None
+-
+     ensure_geometry_results_subdirs(geometry, results_root=results_root)
+     result_dir = get_crystal_results_dir(geometry, results_root=results_root)
+     project_root = Path(__file__).resolve().parents[2]
+diff --git a/src/opo/opo_langevin.py b/src/opo/opo_langevin.py
+index d20b96c..e69b50b 100644
+--- a/src/opo/opo_langevin.py
++++ b/src/opo/opo_langevin.py
+@@ -28,7 +28,7 @@ class OPOLangevinModel:
+ 
+ def build_langevin_model(model: OPOModelResult) -> OPOLangevinModel:
+     """Construct a minimal quadrature-basis Langevin model for a degenerate below-threshold OPO."""
+-    linewidth_hz = max(model.cavity_linewidth_Hz, 0.0)
++    linewidth_hz = max(model.cavity_kappa_total_Hz, 0.0)
+     linewidth_rad_s = 2.0 * np.pi * linewidth_hz
+     detuning_rad_s = 2.0 * np.pi * model.cavity_detuning_Hz
+     sigma = model.pump_parameter
+diff --git a/src/opo/opo_model.py b/src/opo/opo_model.py
+index 24b6baf..7e966fb 100644
+--- a/src/opo/opo_model.py
++++ b/src/opo/opo_model.py
+@@ -13,6 +13,8 @@ from typing import Any
+ 
+ import numpy as np
+ 
++CRYSTAL_LENGTH_CONSISTENCY_TOLERANCE_M = 1e-9
++
+ 
+ @dataclass(frozen=True)
+ class OPOParameters:
+@@ -44,26 +46,84 @@ class OPOModelResult:
+     pump_power_W: float
+     d_eff_pm_per_V: float
+     crystal_length_m: float
++    cavity_crystal_length_m: float
+     effective_mode_area_m2: float
+-    # ``nonlinear_coupling_proxy`` is the raw crystal-derived quantity, while
+-    # ``crystal_gain_factor`` is the threshold-rescaling quantity used by this
+-    # intermediate operating-point model.
+-    nonlinear_coupling_proxy: float
+     nonlinear_overlap: float
+     effective_nonlinear_coupling: float
+-    cavity_loss_scale: float
++    cavity_threshold_factor: float
++    cavity_kappa_ext_Hz: float
++    cavity_kappa_loss_Hz: float
++    cavity_kappa_total_Hz: float
+     crystal_gain_source: str
+     d_eff_source: str
++    crystal_operating_point_mode: str
++    crystal_active_temperature_K: float
+     crystal_gain_factor: float
+     below_threshold: bool
+     escape_efficiency: float
+-    cavity_linewidth_Hz: float
+     cavity_detuning_Hz: float
+     signal_wavelength_m: float
+     pump_wavelength_m: float
+     notes: tuple[str, ...]
+ 
+ 
++def _as_dict(value: Any) -> dict[str, Any]:
++    return value if isinstance(value, dict) else {}
++
++
++def _resolve_active_crystal_payload(
++    crystal_results: dict[str, Any],
++) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]]:
++    active_for_opo = _as_dict(crystal_results.get("active_for_opo"))
++    if active_for_opo:
++        return (
++            active_for_opo,
++            _as_dict(active_for_opo.get("phase_matching")),
++            _as_dict(active_for_opo.get("mode_matching")),
++            _as_dict(active_for_opo.get("boyd_kleinman_analysis")),
++            _as_dict(active_for_opo.get("polarization_resonance")),
++        )
++
++    selected_operating_point = _as_dict(crystal_results.get("selected_operating_point"))
++    legacy_active = {
++        "operating_point_mode": crystal_results.get("selected_operating_point_mode", "unknown"),
++        "temperature_K": selected_operating_point.get("temperature_K"),
++        "crystal_length_m": selected_operating_point.get("crystal_length_m"),
++    }
++    return (
++        legacy_active,
++        _as_dict(crystal_results.get("selected_operating_phase_matching", crystal_results.get("phase_matching", {}))),
++        _as_dict(crystal_results.get("mode_matching")),
++        _as_dict(crystal_results.get("boyd_kleinman_analysis")),
++        _as_dict(crystal_results.get("polarization_resonance")),
++    )
++
++
++def _validate_crystal_length_consistency(
++    cavity_inputs: dict[str, Any],
++    active_for_opo: dict[str, Any],
++    tolerance_m: float = CRYSTAL_LENGTH_CONSISTENCY_TOLERANCE_M,
++) -> tuple[float, float]:
++    cavity_crystal_length_raw = cavity_inputs.get("crystal_length_m")
++    active_crystal_length_raw = active_for_opo.get("crystal_length_m")
++
++    cavity_crystal_length_m = float(cavity_crystal_length_raw) if cavity_crystal_length_raw is not None else np.nan
++    active_crystal_length_m = float(active_crystal_length_raw) if active_crystal_length_raw is not None else np.nan
++
++    if (
++        np.isfinite(cavity_crystal_length_m)
++        and np.isfinite(active_crystal_length_m)
++        and abs(active_crystal_length_m - cavity_crystal_length_m) > float(tolerance_m)
++    ):
++        raise ValueError(
++            "Selected crystal operating point is inconsistent with loaded cavity geometry: "
++            f"active crystal length {active_crystal_length_m:.12g} m vs cavity crystal length "
++            f"{cavity_crystal_length_m:.12g} m. Rerun cavity_main with the selected crystal length before running OPO."
++        )
++
++    return cavity_crystal_length_m, active_crystal_length_m
++
++
+ def build_opo_parameters(config: dict[str, Any]) -> OPOParameters:
+     """Build a validated OPO parameter object from a plain configuration mapping."""
+     return OPOParameters(
+@@ -87,31 +147,40 @@ def derive_opo_quantities(
+     """Build a physics-informed below-threshold OPO operating point from cavity/crystal outputs."""
+     cavity_results = cavity_data.get("results", {})
+     crystal_results = crystal_data.get("results", {})
+-    phase_matching = crystal_results.get("phase_matching", {})
+-    mode_matching = crystal_results.get("mode_matching", {})
+-    bk_analysis = crystal_results.get("boyd_kleinman_analysis", {})
++    active_for_opo, phase_matching, mode_matching, bk_analysis, _polarization_resonance = _resolve_active_crystal_payload(
++        crystal_results
++    )
+     bk_reference = bk_analysis.get("reference", {})
+     crystal_inputs = crystal_data.get("inputs", {})
+     cavity_inputs = cavity_data.get("inputs", {})
++    cavity_crystal_length_m, active_crystal_length_m = _validate_crystal_length_consistency(
++        cavity_inputs,
++        active_for_opo,
++    )
++    selected_operating_point_mode = str(
++        active_for_opo.get(
++            "operating_point_mode",
++            crystal_results.get("selected_operating_point_mode", "unknown"),
++        )
++    )
++    selected_operating_point = _as_dict(crystal_results.get("selected_operating_point", {}))
++    crystal_active_temperature_raw = active_for_opo.get("temperature_K", selected_operating_point.get("temperature_K"))
++    crystal_active_temperature_K = float(crystal_active_temperature_raw) if crystal_active_temperature_raw is not None else np.nan
+ 
+     if parameters.threshold_power_W <= 0.0:
+         raise ValueError("threshold_power_W must be positive")
+ 
+     baseline_threshold_power_W = float(parameters.threshold_power_W)
+-    nonlinear_coupling_proxy_raw = mode_matching.get("effective_nonlinear_overlap")
++    nonlinear_overlap_raw = mode_matching.get("effective_nonlinear_overlap")
+     crystal_gain_source = "effective_nonlinear_overlap"
+-    if nonlinear_coupling_proxy_raw is None:
+-        nonlinear_coupling_proxy_raw = bk_reference.get("bk_reference_factor")
++    if nonlinear_overlap_raw is None:
++        nonlinear_overlap_raw = bk_reference.get("bk_reference_factor")
+         crystal_gain_source = "bk_reference_factor"
+-    if nonlinear_coupling_proxy_raw is None:
+-        nonlinear_coupling_proxy_raw = 1.0
++    if nonlinear_overlap_raw is None:
++        nonlinear_overlap_raw = 1.0
+         crystal_gain_source = "fallback_unity"
+ 
+-    nonlinear_coupling_proxy = max(float(nonlinear_coupling_proxy_raw), 1e-12)
+-    # In the current intermediate model, ``nonlinear_overlap`` stores the
+-    # overlap-like crystal coupling factor used by the OPO layer, even when it
+-    # comes from fallback proxy sources such as the BK reference factor.
+-    nonlinear_overlap = nonlinear_coupling_proxy
++    nonlinear_overlap = max(float(nonlinear_overlap_raw), 1e-12)
+     d_eff_pm_per_V_raw = crystal_inputs.get("d_eff_pm_per_V")
+     d_eff_source = "crystal_input_d_eff_pm_per_V"
+     if d_eff_pm_per_V_raw is None:
+@@ -119,12 +188,18 @@ def derive_opo_quantities(
+         d_eff_source = "fallback_unity_pm_per_V"
+     d_eff_pm_per_V = max(float(d_eff_pm_per_V_raw), 1e-12)
+ 
+-    crystal_length_m = float(
+-        crystal_inputs.get(
+-            "crystal_length_m",
+-            cavity_inputs.get("crystal_length_m", 0.0),
+-        )
+-    )
++    crystal_length_m_raw = active_for_opo.get("crystal_length_m")
++    crystal_length_source = "active_for_opo.crystal_length_m"
++    if crystal_length_m_raw is None:
++        crystal_length_m_raw = selected_operating_point.get("crystal_length_m")
++        crystal_length_source = "selected_operating_point.crystal_length_m"
++    if crystal_length_m_raw is None:
++        crystal_length_m_raw = crystal_inputs.get("crystal_length_m")
++        crystal_length_source = "inputs.crystal_length_m"
++    if crystal_length_m_raw is None:
++        crystal_length_m_raw = cavity_inputs.get("crystal_length_m", 0.0)
++        crystal_length_source = "cavity_inputs.crystal_length_m"
++    crystal_length_m = float(crystal_length_m_raw)
+     crystal_length_m = max(crystal_length_m, 1e-12)
+ 
+     waist_crystal_m_raw = mode_matching.get("waist_crystal_m")
+@@ -138,42 +213,59 @@ def derive_opo_quantities(
+     waist_crystal_m = max(float(waist_crystal_m_raw), 1e-12)
+     effective_mode_area_m2 = max(float(np.pi * waist_crystal_m**2), 1e-24)
+ 
+-    linewidth_hz = float(cavity_results.get("kappa_total_Hz", 0.0))
++    kappa_ext_hz = float(
++        cavity_results.get(
++            "kappa_ext_Hz",
++            float(cavity_results.get("kappa_ext_rad_s", 0.0)) / (2.0 * np.pi),
++        )
++    )
++    kappa_loss_hz = float(
++        cavity_results.get(
++            "kappa_loss_Hz",
++            float(cavity_results.get("kappa_loss_rad_s", 0.0)) / (2.0 * np.pi),
++        )
++    )
++    kappa_total_hz = float(
++        cavity_results.get(
++            "kappa_total_Hz",
++            kappa_ext_hz + kappa_loss_hz,
++        )
++    )
+     detuning_hz = float(cavity_inputs.get("detuning_Hz", 0.0))
+     escape_efficiency = float(cavity_results.get("escape_efficiency", 0.0))
+     linewidth_reference_hz = 1e8
+ 
+     d_eff_m_per_V = d_eff_pm_per_V * 1e-12
+-    # This remains a compact proxy for nonlinear gain rather than a full
++    # This remains a compact nonlinear-gain estimate rather than a full
+     # first-principles gain coefficient.
+     effective_nonlinear_coupling = max(
+         d_eff_m_per_V * crystal_length_m * nonlinear_overlap / np.sqrt(effective_mode_area_m2),
+         1e-18,
+     )
+-    # Higher cavity loss raises the threshold proxy; lower escape efficiency
+-    # weakly penalizes the estimate in this intermediate model.
+-    cavity_loss_scale = (max(linewidth_hz, 0.0) / linewidth_reference_hz) ** 2 / max(
+-        np.sqrt(max(escape_efficiency, 0.0)),
++    # This simplified threshold factor now depends explicitly on the physical
++    # cavity coupling and internal loss rates rather than a generic loss proxy.
++    cavity_threshold_factor = (max(kappa_total_hz, 0.0) / linewidth_reference_hz) ** 2 / max(
++        max(kappa_ext_hz, 0.0) / linewidth_reference_hz,
+         1e-12,
+     )
+-    cavity_loss_scale = max(float(cavity_loss_scale), 1e-12)
++    cavity_threshold_factor = max(float(cavity_threshold_factor), 1e-12)
+ 
+-    # Normalize the physically motivated coupling proxy to a dimensionless
++    # Normalize the physically motivated coupling estimate to a dimensionless
+     # threshold-scaling factor anchored near typical present run conditions.
+     nonlinear_coupling_reference_per_V = 5.0e-10
+     coupling_scale = max(effective_nonlinear_coupling / nonlinear_coupling_reference_per_V, 1e-12)
+     # ``threshold_power_W`` remains the engineering calibration that sets the
+-    # watt scale, while the cavity-loss and nonlinear-coupling proxies apply
++    # watt scale, while the cavity-loss and nonlinear-coupling factors apply
+     # the current physics-informed correction around that baseline.
+     crystal_gain_factor = coupling_scale
+     effective_threshold_power_W = (
+-        baseline_threshold_power_W * (1.0 + cavity_loss_scale) / coupling_scale
++        baseline_threshold_power_W * (1.0 + cavity_threshold_factor) / coupling_scale
+     )
+     pump_parameter = float(parameters.pump_power_W) / effective_threshold_power_W
+ 
+     notes = [
+         "Physics-informed OPO operating-point model.",
+-        "The threshold uses a cavity-loss proxy together with a crystal-derived nonlinear-coupling estimate.",
++        "The threshold uses cavity coupling/loss rates together with a crystal-derived nonlinear-coupling estimate.",
+         "The nonlinear coupling includes d_eff, crystal length, nonlinear overlap, and effective mode area.",
+         "The user-supplied threshold power is retained as a calibration scale, not as the full threshold model.",
+         "This remains an intermediate model rather than a full first-principles threshold derivation.",
+@@ -182,8 +274,11 @@ def derive_opo_quantities(
+         notes.append("Crystal phase-matching output is loaded and available for future coupling calibration.")
+     notes.append(f"Crystal gain source: {crystal_gain_source}.")
+     notes.append(f"d_eff source: {d_eff_source}.")
++    notes.append(f"Crystal operating point mode loaded from crystal workflow: {selected_operating_point_mode}.")
++    notes.append(f"Crystal length source: {crystal_length_source}.")
+     notes.append(f"Waist source for effective mode area: {waist_source}.")
+-    notes.append("The nonlinear-overlap term may come from fallback proxy sources when direct mode-matching data is unavailable.")
++    notes.append("The nonlinear-overlap term may fall back to the BK reference factor when direct mode-matching data is unavailable.")
++    notes.append("Cavity escape efficiency is an intracavity/output-coupling quantity and remains distinct from detection efficiency.")
+     notes.append(
+         f"Nonlinear coupling reference scale for threshold normalization: {nonlinear_coupling_reference_per_V:.3e} 1/V."
+     )
+@@ -196,17 +291,21 @@ def derive_opo_quantities(
+         pump_power_W=float(parameters.pump_power_W),
+         d_eff_pm_per_V=float(d_eff_pm_per_V),
+         crystal_length_m=float(crystal_length_m),
++        cavity_crystal_length_m=float(cavity_crystal_length_m),
+         effective_mode_area_m2=float(effective_mode_area_m2),
+-        nonlinear_coupling_proxy=float(nonlinear_coupling_proxy),
+         nonlinear_overlap=float(nonlinear_overlap),
+         effective_nonlinear_coupling=float(effective_nonlinear_coupling),
+-        cavity_loss_scale=float(cavity_loss_scale),
++        cavity_threshold_factor=float(cavity_threshold_factor),
++        cavity_kappa_ext_Hz=float(kappa_ext_hz),
++        cavity_kappa_loss_Hz=float(kappa_loss_hz),
++        cavity_kappa_total_Hz=float(kappa_total_hz),
+         crystal_gain_source=crystal_gain_source,
+         d_eff_source=d_eff_source,
++        crystal_operating_point_mode=str(selected_operating_point_mode),
++        crystal_active_temperature_K=float(crystal_active_temperature_K),
+         crystal_gain_factor=float(crystal_gain_factor),
+         below_threshold=bool(pump_parameter < 1.0),
+         escape_efficiency=escape_efficiency,
+-        cavity_linewidth_Hz=linewidth_hz,
+         cavity_detuning_Hz=detuning_hz,
+         signal_wavelength_m=float(parameters.signal_wavelength_m),
+         pump_wavelength_m=float(parameters.pump_wavelength_m),
+diff --git a/src/opo/opo_plotter.py b/src/opo/opo_plotter.py
+index 063c89a..d869183 100644
+--- a/src/opo/opo_plotter.py
++++ b/src/opo/opo_plotter.py
+@@ -76,7 +76,16 @@ def plot_opo_resonance_diagnostic(
+     not a full cavity transfer-function or quantum-noise calculation.
+     """
+     crystal_results = crystal_results or {}
+-    resonance = crystal_results.get("polarization_resonance", {})
++    active_for_opo = crystal_results.get("active_for_opo", {})
++    if not isinstance(active_for_opo, dict):
++        active_for_opo = {}
++    resonance = active_for_opo.get(
++        "polarization_resonance",
++        crystal_results.get(
++            "active_polarization_resonance",
++            crystal_results.get("polarization_resonance", {}),
++        ),
++    )
+     if not resonance:
+         raise ValueError("Crystal results missing polarization_resonance diagnostic")
+ 
+@@ -88,7 +97,11 @@ def plot_opo_resonance_diagnostic(
+ 
+     linewidth_hz = None
+     if model is not None:
+-        linewidth_hz = model.get("cavity_linewidth_Hz") or model.get("kappa_total_Hz")
++        linewidth_hz = (
++            model.get("cavity_kappa_total_Hz")
++            or model.get("cavity_linewidth_Hz")
++            or model.get("kappa_total_Hz")
++        )
+     if linewidth_hz is None:
+         frequency_axis_hz = np.asarray(spectrum["frequency_Hz"], dtype=float)
+         linewidth_hz = max(float(np.ptp(frequency_axis_hz)) / 50.0, 1.0)
+diff --git a/src/opo/opo_squeezing.py b/src/opo/opo_squeezing.py
+index 5ec15c3..a592e69 100644
+--- a/src/opo/opo_squeezing.py
++++ b/src/opo/opo_squeezing.py
+@@ -92,7 +92,7 @@ def compute_squeezing_spectra(
+     measurement_vector = np.array([np.cos(theta), np.sin(theta)], dtype=float)
+ 
+     omega = 2.0 * np.pi * frequency_hz
+-    linewidth_rad_s = max(2.0 * np.pi * max(float(model.cavity_linewidth_Hz), 0.0), np.finfo(float).eps)
++    linewidth_rad_s = max(2.0 * np.pi * max(float(model.cavity_kappa_total_Hz), 0.0), np.finfo(float).eps)
+ 
+     drift_matrix = np.asarray(langevin.drift_matrix, dtype=float)
+     input_matrix = np.asarray(langevin.input_matrix, dtype=float)
+diff --git a/src/opo/opo_workflow.py b/src/opo/opo_workflow.py
+index d5b09e3..b0d4455 100644
+--- a/src/opo/opo_workflow.py
++++ b/src/opo/opo_workflow.py
+@@ -13,6 +13,8 @@ import json
+ from pathlib import Path
+ from typing import Any
+ 
++import numpy as np
++
+ try:
+     from common.results_paths import (
+         ensure_geometry_results_subdirs,
+@@ -81,7 +83,7 @@ def load_opo_context(
+     crystal_data = _load_json(crystal_output_path)
+ 
+     return OPOContext(
+-        geometry=str(cavity_data.get("geometry", geometry)),
++        geometry=str(cavity_data.get("geometry", cavity_data.get("inputs", {}).get("geometry", geometry))),
+         cavity_output_path=str(Path(cavity_output_path)),
+         crystal_output_path=str(Path(crystal_output_path)),
+         cavity_data=cavity_data,
+@@ -89,9 +91,49 @@ def load_opo_context(
+     )
+ 
+ 
++def _validate_opo_context_consistency(context: OPOContext, tolerance_m: float = 1e-9) -> None:
++    crystal_results = context.crystal_data.get("results", {})
++    active_for_opo = crystal_results.get("active_for_opo", {})
++    if not isinstance(active_for_opo, dict):
++        return
++
++    cavity_inputs = context.cavity_data.get("inputs", {})
++    cavity_crystal_length_raw = cavity_inputs.get("crystal_length_m")
++    active_crystal_length_raw = active_for_opo.get("crystal_length_m")
++    recommended_cavity_length_raw = active_for_opo.get("recommended_cavity_crystal_length_m", active_crystal_length_raw)
++
++    cavity_crystal_length_m = float(cavity_crystal_length_raw) if cavity_crystal_length_raw is not None else np.nan
++    active_crystal_length_m = float(active_crystal_length_raw) if active_crystal_length_raw is not None else np.nan
++    recommended_cavity_length_m = (
++        float(recommended_cavity_length_raw)
++        if recommended_cavity_length_raw is not None
++        else active_crystal_length_m
++    )
++
++    if (
++        np.isfinite(cavity_crystal_length_m)
++        and np.isfinite(active_crystal_length_m)
++        and abs(active_crystal_length_m - cavity_crystal_length_m) > float(tolerance_m)
++    ):
++        raise ValueError(
++            "Selected crystal operating point is inconsistent with loaded cavity geometry.\n"
++            f"Cavity JSON: {context.cavity_output_path}\n"
++            f"Crystal JSON: {context.crystal_output_path}\n"
++            f"Loaded cavity crystal length: {cavity_crystal_length_m:.12g} m\n"
++            f"Selected crystal active length: {active_crystal_length_m:.12g} m\n"
++            f"Recommended cavity crystal length: {recommended_cavity_length_m:.12g} m\n"
++            "Rerun sequence:\n"
++            "1. Update cavity_main.py to use the recommended cavity crystal length.\n"
++            "2. Rerun cavity_main.py.\n"
++            "3. Rerun crystal_main.py.\n"
++            "4. Rerun opo_main.py."
++        )
++
++
+ def compute_opo_model(context: OPOContext, config: dict[str, Any]) -> tuple[OPOParameters, OPOModelResult]:
+     """Build OPO parameters and the minimal operating-point model."""
+     parameters = build_opo_parameters(config)
++    _validate_opo_context_consistency(context)
+     model = derive_opo_quantities(parameters, context.cavity_data, context.crystal_data)
+     return parameters, model
+ 
+@@ -137,24 +179,34 @@ def print_opo_summary(result: OPOSimulationResult) -> None:
+     print(f"Crystal gain source: {result.model.crystal_gain_source}")
+     print(f"d_eff source: {result.model.d_eff_source}")
+     print(f"d_eff: {result.model.d_eff_pm_per_V:.6e} pm/V")
+-    print(f"Nonlinear coupling proxy: {result.model.nonlinear_coupling_proxy:.6f}")
++    print(f"Nonlinear overlap: {result.model.nonlinear_overlap:.6f}")
+     print(f"Effective mode area: {result.model.effective_mode_area_m2:.6e} m^2")
+     print(f"Effective nonlinear coupling: {result.model.effective_nonlinear_coupling:.6e} 1/V")
+-    print(f"Cavity loss scale: {result.model.cavity_loss_scale:.6f}")
++    print(f"Cavity kappa_ext: {result.model.cavity_kappa_ext_Hz:.6f} Hz")
++    print(f"Cavity kappa_loss: {result.model.cavity_kappa_loss_Hz:.6f} Hz")
++    print(f"Cavity kappa_total: {result.model.cavity_kappa_total_Hz:.6f} Hz")
++    print(f"Escape efficiency: {result.model.escape_efficiency:.6f}")
+     print(f"Effective threshold power: {result.model.effective_threshold_power_W:.6f} W")
+     print(f"Pump parameter sigma: {result.model.pump_parameter:.6f}")
+     print(f"Below threshold: {result.model.below_threshold}")
+     print(f"Cavity detuning: {result.model.cavity_detuning_Hz:.6f} Hz")
++    print(f"Crystal operating point mode: {result.model.crystal_operating_point_mode}")
++    if np.isfinite(result.model.crystal_active_temperature_K):
++        print(f"Crystal active temperature: {result.model.crystal_active_temperature_K:.3f} K")
++    if np.isfinite(result.model.crystal_length_m):
++        print(f"Crystal active length: {result.model.crystal_length_m * 1e3:.6f} mm")
++    if np.isfinite(result.model.cavity_crystal_length_m):
++        print(f"Cavity crystal length: {result.model.cavity_crystal_length_m * 1e3:.6f} mm")
+     optimal_phase_low_frequency = float(result.spectrum.optimal_phase_rad[0])
+     print(f"LO phase: {result.parameters.lo_phase_rad:.6f} rad")
+     print(f"Optimal squeezing phase (low-frequency limit): {optimal_phase_low_frequency:.6f} rad")
+-    print(f"Escape efficiency: {result.model.escape_efficiency:.6f}")
+-    print(f"Detection efficiency: {result.parameters.detection_efficiency:.6f}")
++    print(f"External detection efficiency: {result.parameters.detection_efficiency:.6f}")
+     print(f"Analysis sideband: {result.parameters.analysis_sideband_Hz:.3f} Hz")
+ 
+ 
+ def _build_opo_inputs_payload(context: OPOContext, parameters: OPOParameters) -> dict[str, Any]:
+     return {
++        "geometry": context.geometry,
+         "cavity_output_path": context.cavity_output_path,
+         "crystal_output_path": context.crystal_output_path,
+         **asdict(parameters),
+@@ -165,29 +217,28 @@ def _build_opo_results_payload(result: OPOSimulationResult) -> dict[str, Any]:
+     model_payload = asdict(result.model)
+     model_payload["notes"] = list(result.model.notes)
+     model_payload["detection_efficiency"] = float(result.parameters.detection_efficiency)
+-
+-    langevin_payload = {
+-        "quadrature_labels": list(result.langevin.quadrature_labels),
+-        "drift_matrix": result.langevin.drift_matrix.tolist(),
+-        "input_matrix": result.langevin.input_matrix.tolist(),
+-        "noise_coupling_matrix": result.langevin.noise_coupling_matrix.tolist(),
+-        "notes": list(result.langevin.notes),
+-    }
+-
+     return {
+         "model": model_payload,
+-        "langevin": langevin_payload,
+         "spectrum": spectrum_to_dict(result.spectrum),
+     }
+ 
+ 
+ def build_opo_simulation_output(result: OPOSimulationResult) -> dict[str, Any]:
+     """Build JSON-serializable OPO simulation output."""
+-    return {
+-        "geometry": result.context.geometry,
++    output = {
+         "inputs": _build_opo_inputs_payload(result.context, result.parameters),
+         "results": _build_opo_results_payload(result),
+     }
++    output["debug_data"] = {
++        "langevin": {
++            "quadrature_labels": list(result.langevin.quadrature_labels),
++            "drift_matrix": result.langevin.drift_matrix.tolist(),
++            "input_matrix": result.langevin.input_matrix.tolist(),
++            "noise_coupling_matrix": result.langevin.noise_coupling_matrix.tolist(),
++            "notes": list(result.langevin.notes),
++        }
++    }
++    return output
+ 
+ 
+ def save_opo_outputs(
+@@ -219,7 +270,6 @@ def save_opo_outputs(
+     }
+     if fig_resonance_diagnostic is not None:
+         outputs_info["opo_resonance_diagnostic_png"] = _repo_relative(resonance_diagnostic_path)
+-    output["outputs"] = outputs_info
+ 
+     with json_path.open("w", encoding="utf-8") as f:
+         json.dump(output, f, indent=2)

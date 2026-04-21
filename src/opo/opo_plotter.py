@@ -5,6 +5,8 @@ from __future__ import annotations
 import matplotlib.pyplot as plt
 import numpy as np
 
+_C_M_PER_S = 299792458.0
+
 
 def plot_opo_spectrum_summary(spectrum: dict[str, list[float]]):
     """Plot squeezing, antisqueezing, and shot-noise reference spectra."""
@@ -76,19 +78,40 @@ def plot_opo_resonance_diagnostic(
     not a full cavity transfer-function or quantum-noise calculation.
     """
     crystal_results = crystal_results or {}
-    resonance = crystal_results.get("polarization_resonance", {})
+    active_for_opo = crystal_results.get("active_for_opo", {})
+    if not isinstance(active_for_opo, dict):
+        active_for_opo = {}
+    resonance = active_for_opo.get(
+        "polarization_resonance",
+        crystal_results.get(
+            "active_polarization_resonance",
+            crystal_results.get("polarization_resonance", {}),
+        ),
+    )
     if not resonance:
         raise ValueError("Crystal results missing polarization_resonance diagnostic")
 
-    fsr_signal_hz = float(resonance["fsr_signal_Hz"])
-    fsr_idler_hz = float(resonance["fsr_idler_Hz"])
+    fsr_signal_hz = resonance.get("fsr_signal_Hz")
+    if fsr_signal_hz is None and "signal_optical_roundtrip_length_m" in resonance:
+        fsr_signal_hz = _C_M_PER_S / float(resonance["signal_optical_roundtrip_length_m"])
+    fsr_idler_hz = resonance.get("fsr_idler_Hz")
+    if fsr_idler_hz is None and "idler_optical_roundtrip_length_m" in resonance:
+        fsr_idler_hz = _C_M_PER_S / float(resonance["idler_optical_roundtrip_length_m"])
+    if fsr_signal_hz is None or fsr_idler_hz is None:
+        raise KeyError("polarization_resonance is missing FSR data and optical round-trip lengths")
+    fsr_signal_hz = float(fsr_signal_hz)
+    fsr_idler_hz = float(fsr_idler_hz)
     delta_fsr_hz = float(resonance.get("delta_fsr_Hz", fsr_signal_hz - fsr_idler_hz))
     delta_phi_wrapped_rad = float(resonance.get("delta_phi_wrapped_rad", 0.0))
     is_double_resonant = bool(resonance.get("is_double_resonant", False))
 
     linewidth_hz = None
     if model is not None:
-        linewidth_hz = model.get("cavity_linewidth_Hz") or model.get("kappa_total_Hz")
+        linewidth_hz = (
+            model.get("cavity_kappa_total_Hz")
+            or model.get("cavity_linewidth_Hz")
+            or model.get("kappa_total_Hz")
+        )
     if linewidth_hz is None:
         frequency_axis_hz = np.asarray(spectrum["frequency_Hz"], dtype=float)
         linewidth_hz = max(float(np.ptp(frequency_axis_hz)) / 50.0, 1.0)

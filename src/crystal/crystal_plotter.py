@@ -128,6 +128,7 @@ def plot_boyd_kleinman_vs_delta_k(
 def plot_bk_master_map_sigma_xi(
     bk_data: dict,
     operating_point: dict | None = None,
+    operating_point_label: str = "Operating point",
 ):
     """Plot the BK master map ``h_BK(sigma, xi)`` with its numerical optimum."""
     sigma_values = np.asarray(bk_data["bk_master_sigma_values"], dtype=float)
@@ -176,7 +177,7 @@ def plot_bk_master_map_sigma_xi(
                     xi_reference,
                     color="red",
                     s=80,
-                    label="Operating point",
+                    label=operating_point_label,
                     zorder=6,
                 )
     handles, labels = ax.get_legend_handles_labels()
@@ -203,7 +204,7 @@ def plot_bk_master_map_sigma_xi(
     ):
         text += (
             "\n\n"
-            "Operating point\n"
+            f"{operating_point_label}\n"
             rf"$\sigma = {sigma_reference_value:.3f}$" "\n"
             rf"$\xi = {xi_reference_value:.3f}$" "\n"
             rf"$h_{{\mathrm{{BK}}}}(\sigma,\xi) = {h_bk_operating:.3f}$"

@@ -1,225 +1,80 @@
-# Crystal Module
+# Crystal Layer
 
-In QPIT-SQZsim, the crystal layer takes the cavity-derived intracavity mode and asks whether the nonlinear medium supports efficient three-wave interaction under those optical conditions. The current workflow is design-oriented: for a chosen three-wave process, crystal model, and design temperature, it can derive the required QPM poling period, determine the operating temperature from a phase-matching scan, and then evaluate focused-beam nonlinear overlap.
+This page documents the crystal-side workflow and the crystal -> OPO handoff.
 
-## Refractive Index
+## Role
 
-The starting point is the refractive index model of the nonlinear crystal. Conceptually, this is a Sellmeier-type description: refractive index depends on wavelength, and may also change with temperature through a thermo-optic correction.
+The crystal layer consumes the cavity export and defines the nonlinear operating point used downstream.
 
-The project keeps this logic in `src/crystal/crystal_materials.py`:
+The entry point is:
 
-- `SellmeierCoefficients` stores dispersion parameters
-- `n_sellmeier_um(...)` evaluates a standard Sellmeier model
-- `n_from_model(...)` adds an optional linear temperature dependence
+- `src/crystal/crystal_main.py`
 
-The important point for the rest of the pipeline is that phase matching depends on refractive indices evaluated at pump, signal, and idler wavelengths.
+## What `crystal_main.py` Does
 
-## Phase Mismatch `Delta k`
+The crystal script:
 
-Three-wave mixing is controlled by the wave-vector mismatch
+- loads the cavity JSON
+- resolves the crystal material and interaction type
+- computes the phase-matching scan
+- computes the phase-matching resonance diagnostic
+- optionally computes the double-resonance scan
+- builds candidate operating points
+- selects one active operating point
+- evaluates active crystal quantities at that point
+- exports the crystal JSON and plots
 
-`Delta k = k_p - k_s - k_i`
+## Operating-Point Logic
 
-If `Delta k = 0`, the nonlinear polarization stays in phase with the generated fields and conversion is efficient. If not, the interaction oscillates along the crystal and net conversion is reduced.
+The current operating-point selector is:
 
-This logic is implemented in `src/crystal/crystal_phase_matching.py`, primarily through:
+- `OPERATING_POINT_MODE`
 
-- `k_of_n(...)`
-- `delta_k_three_wave(...)`
-- `pm_amplitude_factor(...)`
-- `pm_power_factor(...)`
+Supported modes:
 
-The code uses the usual sinc-like reduction factor for a finite crystal length rather than a long symbolic derivation.
+- `phase_matching`
+- `double_resonance`
 
-## Quasi-Phase Matching
+The selected candidate is exported as:
 
-When the material’s natural dispersion does not give `Delta k = 0`, the code can include a QPM grating vector. The effective mismatch becomes
+- `results.selected_operating_point_mode`
+- `results.selected_operating_point`
 
-`Delta k_eff = Delta k - m K_g`
+## `active_for_opo`
 
-where `K_g = 2 pi / Lambda` and `m` is the QPM order.
+The main OPO-facing crystal block is:
 
-This is handled by:
+- `results.active_for_opo`
 
-- `qpm_grating_k(...)`
-- `delta_k_qpm(...)`
-- `poling_period_T(...)`
+It contains the resolved active crystal state:
 
-in `src/crystal/crystal_phase_matching.py`.
+- operating-point mode
+- active temperature
+- active crystal length
+- active phase-matching summary
+- active mode matching
+- active Boyd-Kleinman summary
+- active polarization-resonance diagnostic
 
-Conceptually, periodic poling compensates the bulk mismatch by resetting the nonlinear phase accumulation. In the current design workflow, the user can either derive the required poling period from wavelengths plus design temperature or analyze a chosen crystal configuration with an explicit period.
+This is the intended single source of truth for OPO.
 
-## Temperature Tuning
+## Crystal Outputs Intended For OPO
 
-Temperature affects the crystal model in two ways:
+The OPO layer primarily needs:
 
-- refractive indices shift with temperature
-- the poling period can change through thermal expansion
+- `active_for_opo.phase_matching`
+- `active_for_opo.mode_matching`
+- `active_for_opo.boyd_kleinman_analysis`
+- `active_for_opo.polarization_resonance`
+- `active_for_opo.temperature_K`
+- `active_for_opo.crystal_length_m`
 
-The function `scan_phase_matching_vs_temperature(...)` evaluates these effects over a temperature grid and returns the best operating point together with the full scan arrays. In design mode, this scan is performed after the code first derives the QPM period with `compute_design_poling_period(...)` at the chosen design temperature.
+The crystal layer also exports compact top-level crystal `results` for inspection, while scans and heavy arrays belong in `debug_data`.
 
-## Interaction Type Selection
+## Practical Notes
 
-The nonlinear interaction type is selected explicitly in `src/crystal/crystal_main.py` through `PHASE_MATCHING_TYPE`.
+- `phase_matching` and `double_resonance` do not generally coincide.
+- In `double_resonance` mode, the selected crystal length may differ from the cavity file.
+- When that happens, OPO requires the cavity workflow to be rerun with the selected crystal length.
 
-The currently supported values are:
-
-- `type_0`
-- `type_I`
-- `type_II`
-
-`src/crystal/crystal_main.py` treats this as the single source of truth for the chosen process. The mapping from interaction type to pump/signal/idler crystal axes is then resolved internally by `PhaseMatchingConfiguration` and `resolve_phase_matching_configuration(...)` in `src/crystal/crystal_materials.py`. Downstream modules receive only the resolved refractive-index functions and do not implement their own type-specific branching.
-
-The currently implemented axis mapping is:
-
-- `type_0`: pump `z`, signal `z`, idler `z`
-- `type_I`: pump `z`, signal `y`, idler `y`
-- `type_II`: pump `z`, signal `y`, idler `z`
-
-Implementation note: the current `type_II` support reflects the present axis-based refractive-index assignment used by the crystal layer. It should not be overinterpreted as a fully general polarization treatment beyond what the rest of the current code explicitly models.
-
-## Effective Nonlinearity
-
-The effective nonlinearity `d_eff` is resolved explicitly in `src/crystal/crystal_materials.py` from:
-
-- the selected crystal model
-- the selected phase-matching type
-
-The crystal layer treats this as material-specific interaction data and exports the resolved `d_eff` in the structured crystal output for downstream use by the OPO model.
-
-In the current implementation, `d_eff` represents the effective nonlinear coupling strength for the selected interaction type within the present axis-based crystal model. This means the exported value is consistent with the current pump/signal/idler axis assignment and with the current interaction-type resolver.
-
-As with the current `type_II` axis assignment, the present `d_eff` treatment should be interpreted as an axis-based model choice rather than as a full general polarization treatment.
-
-## Gaussian Beam Focusing
-
-Phase matching alone is not enough. The field distribution inside the crystal also matters, because nonlinear coupling depends on how tightly the Gaussian mode is focused.
-
-The cavity layer provides the crystal waist, and the crystal layer converts that waist into:
-
-- Rayleigh range
-- confocal parameter
-- focusing parameter
-
-These calculations are implemented in `src/crystal/crystal_mode_matching.py`.
-
-The relevant physical tradeoff is standard:
-
-- tight focusing increases intensity
-- excessive focusing shortens the effective interaction length
-
-The code captures that tradeoff with a compact focused-beam model.
-
-## Focusing Parameter `xi`
-
-The normalized focusing parameter is
-
-`xi = L / (2 z_R)`
-
-with crystal length `L` and Rayleigh range `z_R` inside the medium. This parameter compares the crystal length to the beam’s diffraction length.
-
-`xi` is computed in both `src/crystal/crystal_mode_matching.py` and `src/crystal/crystal_boyd_kleinman.py`. It is the natural dimensionless quantity for deciding whether the mode is under-focused, over-focused, or near the useful interaction regime.
-
-## Boyd-Kleinman Theory
-
-The project uses a simplified Boyd-Kleinman-style treatment to estimate focused-beam nonlinear overlap. Rather than only asking whether the crystal is phase matched, it evaluates how the Gaussian beam profile and longitudinal phase accumulation combine over the crystal length.
-
-This is implemented in `src/crystal/crystal_boyd_kleinman.py`:
-
-- `compute_focusing_parameter(...)`
-- `boyd_kleinman_integral(...)`
-- `boyd_kleinman_efficiency(...)`
-
-The exported `boyd_kleinman_factor` and `effective_nonlinear_overlap` are therefore not purely material properties. They are cavity-conditioned quantities because they depend on the mode that the cavity creates inside the crystal.
-
-The BK analysis layer also exports three related visualizations:
-
-- a universal BK master map `h_BK(\sigma,\xi)`
-- a normalized QPM / poling-length map
-- a system-specific BK sweep analysis figure
-
-The BK master map is theoretical: it shows the normalized BK focusing factor over the abstract control parameters `sigma` and `xi`. The BK reference operating point is system-specific: it is computed from the current cavity mode, phase-matching operating temperature, and selected QPM configuration. The reported BK master-map optimum is the numerical optimum of the universal map, not of the specific cavity/crystal operating point.
-
-## How Cavity Output Is Used
-
-The cavity-to-crystal handoff is explicit and file-based.
-
-### Waist and position
-
-`load_cavity_context_for_crystal(...)` in `src/crystal/crystal_workflow.py` reads `beam_waist_crystal_um` from the cavity JSON and converts it into the waist used for all focusing calculations. The reference plane is already the crystal region, so the crystal layer receives the beam where the nonlinear interaction is evaluated.
-
-### Phase-matching inputs
-
-The same cavity JSON also provides:
-
-- `crystal_length_m`
-- `wavelength_m`
-- `n_crystal`
-
-These become the default optical and geometric context for the crystal workflow. The phase-matching scan then combines them with the user-supplied pump/signal/idler wavelength model and refractive-index functions.
-
-### Mode context
-
-`build_mode_matching_context_from_cavity_output(...)` in `src/crystal/crystal_mode_matching.py` also reconstructs complex `q_sagittal` and `q_tangential` from the cavity JSON. Even though the current overlap calculation mainly uses the scalar waist, the exported `q` values keep the interface ready for more detailed astigmatic or longitudinal mode treatments.
-
-## Design Workflow
-
-The crystal workflow now follows this order:
-
-1. Load cavity context from the cavity JSON output.
-2. Choose the target wavelengths, crystal model, QPM order, and phase-matching mode.
-3. In design mode, derive the required poling period from the bulk three-wave mismatch at the chosen design temperature.
-4. Scan phase matching versus temperature using that derived or explicitly supplied period.
-5. Determine the operating temperature from the best phase-matching point.
-6. Evaluate the refractive index at the operating temperature for mode matching.
-7. Compute mode matching and BK analysis.
-8. Build the structured result, print the summary, generate plots, and save outputs.
-
-This keeps the crystal layer aligned with how an OPO crystal is normally designed: the wavelengths and temperature define the grating, and the downstream analysis then evaluates that operating point.
-
-## How Phase Matching Is Computed
-
-The workflow is:
-
-1. Evaluate `n_p(T)`, `n_s(T)`, and `n_i(T)`.
-2. Convert refractive indices into wave vectors.
-3. Compute bulk `Delta k`.
-4. Apply the QPM grating correction to get `Delta k_eff`.
-5. Convert `Delta k_eff` into a finite-length sinc-squared power factor.
-6. Repeat across temperature and locate the best operating point.
-
-This sequencing is implemented by `compute_crystal_phase_matching(...)` in `src/crystal/crystal_workflow.py`, which delegates the actual physics to `src/crystal/crystal_phase_matching.py`.
-
-## Wavelength Sweep Convention
-
-The BK wavelength sweeps keep the pump wavelength fixed and treat the signal wavelength as the scanned variable. The idler wavelength is derived from exact three-wave energy conservation,
-
-`1 / lambda_p = 1 / lambda_s + 1 / lambda_i`
-
-rather than being shifted independently by the same wavelength increment.
-
-## How Mode Matching Is Handled
-
-The workflow converts the cavity waist into a medium-adjusted Rayleigh range and then into `xi`. That `xi`, together with any supplied phase mismatch, is passed into the Boyd-Kleinman overlap integral.
-
-So mode matching here means more than geometric alignment: it is the compatibility between the cavity-supported Gaussian mode and the finite nonlinear interaction volume of the crystal.
-
-The core file responsibilities are:
-
-- `src/crystal/crystal_materials.py`: dispersion and thermo-optic material models, plus interaction-type-to-axis resolution
-- `src/crystal/crystal_phase_matching.py`: `Delta k`, QPM, and temperature scans
-- `src/crystal/crystal_mode_matching.py`: cavity-output parsing and focusing quantities
-- `src/crystal/crystal_boyd_kleinman.py`: focused-beam overlap model
-- `src/crystal/crystal_workflow.py`: orchestration and export
-
-## Output Integration
-
-The crystal summary, plots, and exported JSON now share the same BK metadata. In particular, the structured result includes:
-
-- the BK reference operating point
-- the BK master-map optimum
-- the BK analysis payload used by the crystal plots
-
-The QPM / poling-length figure also uses corrected terminology: the guide curve is a first-order QPM guide in the chosen normalization, not a `Delta k = 0` curve.
-
-Taken together, these files define the crystal side of the project’s pipeline: cavity mode -> design poling and phase matching -> operating-point mode matching -> BK analysis.
+For the execution order, see [workflow.md](workflow.md). For the JSON structure, see [outputs.md](outputs.md).

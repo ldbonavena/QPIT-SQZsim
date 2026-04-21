@@ -92,7 +92,7 @@ def compute_squeezing_spectra(
     measurement_vector = np.array([np.cos(theta), np.sin(theta)], dtype=float)
 
     omega = 2.0 * np.pi * frequency_hz
-    linewidth_rad_s = max(2.0 * np.pi * max(float(model.cavity_linewidth_Hz), 0.0), np.finfo(float).eps)
+    linewidth_rad_s = max(2.0 * np.pi * max(float(model.cavity_kappa_total_Hz), 0.0), np.finfo(float).eps)
 
     drift_matrix = np.asarray(langevin.drift_matrix, dtype=float)
     input_matrix = np.asarray(langevin.input_matrix, dtype=float)

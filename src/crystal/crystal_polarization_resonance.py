@@ -84,7 +84,10 @@ def compute_polarization_resonance_diagnostic(
         "is_double_resonant": bool(abs(delta_phi_wrapped_rad) < resonance_tolerance_rad),
     }
 
-    c_m_per_s = cavity_data.get("constants", {}).get("c_m_per_s")
+    c_m_per_s = cavity_data.get("inputs", {}).get(
+        "c_m_per_s",
+        cavity_data.get("constants", {}).get("c_m_per_s"),
+    )
     if c_m_per_s is not None:
         c_value = float(c_m_per_s)
         fsr_signal_hz = c_value / signal_optical_roundtrip_length_m

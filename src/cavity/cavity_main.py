@@ -52,13 +52,19 @@ GEOMETRY = "monolithic"
 
 c_num = 299792458.0
 
-f_crystal_length = 4.097e-3
+f_crystal_length = 4.0975e-3
 f_n_crystal = 1.78
 f_RoC = 10e-3
 f_wavelength = 1540e-9
 
-f_T_ext = 1.0 - 0.954
-f_L_rt = 1e-3
+# Resonant-field cavity loss model:
+# R1_resonant is the non-output mirror/facet reflectivity and any transmission
+# through it is treated as internal cavity loss. R2_resonant defines the output
+# coupling. Distributed loss and parasitic round-trip loss remain internal.
+R1_resonant = 0.999
+R2_resonant = 0.954
+alpha_resonant_per_m = 0.0
+L_parasitic_rt = 0.0
 f_detuning_Hz = 0.0
 
 # Bow-tie parameters
@@ -83,8 +89,10 @@ parameters = {
     "f_n_crystal": f_n_crystal,
     "f_RoC": f_RoC,
     "f_wavelength": f_wavelength,
-    "f_T_ext": f_T_ext,
-    "f_L_rt": f_L_rt,
+    "R1_resonant": R1_resonant,
+    "R2_resonant": R2_resonant,
+    "alpha_resonant_per_m": alpha_resonant_per_m,
+    "L_parasitic_rt": L_parasitic_rt,
     "f_detuning_Hz": f_detuning_Hz,
     "f_theta_AOI": f_theta_AOI,
     "f_L_cav": f_L_cav,
@@ -157,9 +165,8 @@ derived = compute_cavity_derived_quantities(
     context,
     single_point,
     c_m_per_s=c_num,
-    T_ext=f_T_ext,
-    L_rt=f_L_rt,
     detuning_Hz=f_detuning_Hz,
+    loss_model_parameters=parameters,
 )
 print_derived_cavity_quantities(derived)
 
@@ -169,7 +176,6 @@ print_derived_cavity_quantities(derived)
 cavity_result = build_cavity_simulation_result(context, single_point, derived)
 simulation_output = build_cavity_simulation_output(cavity_result, c_m_per_s=c_num)
 saved_outputs = save_cavity_outputs(GEOMETRY, simulation_output, fig_stability, fig_waist)
-simulation_output["outputs"] = saved_outputs
 
 print(f"Saved simulation output to: {saved_outputs['cavity_output_json']}")
 print(f"Saved stability map to: {saved_outputs['stability_map_png']}")

@@ -37,14 +37,112 @@ def fsr_from_roundtrip_length(L_optical_m, c_m_per_s):
     return float(c_m_per_s / L_optical_m)
 
 
-def compute_decay_rates(L_optical_m, c_m_per_s, T_ext, L_rt):
-    """Compute cavity decay rates and escape efficiency."""
-    kappa_ext = (c_m_per_s / (2.0 * L_optical_m)) * T_ext
-    kappa_loss = (c_m_per_s / (2.0 * L_optical_m)) * L_rt
+def distributed_roundtrip_loss(alpha_per_m: float, roundtrip_propagation_length_m: float) -> float:
+    """Return distributed round-trip power loss from an intensity attenuation coefficient."""
+    alpha = max(float(alpha_per_m), 0.0)
+    length_m = max(float(roundtrip_propagation_length_m), 0.0)
+    return float(1.0 - np.exp(-alpha * length_m))
+
+
+def resolve_resonant_loss_model(parameters: dict, roundtrip_propagation_length_m: float) -> dict[str, float | str]:
+    """Resolve one physically explicit resonant-loss model from new or legacy inputs.
+
+    New convention:
+    - ``R1_resonant``: non-output resonant mirror/facet reflectivity
+    - ``R2_resonant``: output-coupler reflectivity
+    - ``alpha_resonant_per_m``: distributed resonant power-loss coefficient
+    - ``L_parasitic_rt``: extra round-trip internal power loss
+
+    Legacy convention:
+    - ``f_T_ext``: output coupling transmission
+    - ``f_L_rt``: internal round-trip power loss
+    """
+    uses_new = any(
+        key in parameters
+        for key in ("R1_resonant", "R2_resonant", "alpha_resonant_per_m", "L_parasitic_rt")
+    )
+    uses_legacy = any(key in parameters for key in ("f_T_ext", "f_L_rt"))
+
+    if uses_new and uses_legacy:
+        raise ValueError(
+            "Mixed cavity loss conventions are not allowed. Use either the reflectivity-based "
+            "inputs (R1_resonant/R2_resonant/alpha_resonant_per_m/L_parasitic_rt) or the legacy "
+            "inputs (f_T_ext/f_L_rt), but not both."
+        )
+
+    if uses_new:
+        if "R1_resonant" not in parameters or "R2_resonant" not in parameters:
+            raise ValueError("Reflectivity-based cavity loss model requires both R1_resonant and R2_resonant.")
+        reflectivity_input = float(parameters["R1_resonant"])
+        reflectivity_output = float(parameters["R2_resonant"])
+        alpha_resonant_per_m = float(parameters.get("alpha_resonant_per_m", 0.0))
+        parasitic_roundtrip_loss = float(parameters.get("L_parasitic_rt", 0.0))
+        source = "reflectivity_based"
+    else:
+        output_coupling_transmission = float(parameters.get("f_T_ext", 0.0))
+        internal_roundtrip_loss = float(parameters.get("f_L_rt", 0.0))
+        reflectivity_input = 1.0
+        reflectivity_output = 1.0 - output_coupling_transmission
+        alpha_resonant_per_m = 0.0
+        parasitic_roundtrip_loss = internal_roundtrip_loss
+        source = "legacy_f_T_ext_f_L_rt"
+
+    for label, value in (
+        ("R1_resonant", reflectivity_input),
+        ("R2_resonant", reflectivity_output),
+    ):
+        if not (0.0 <= value <= 1.0):
+            raise ValueError(f"{label} must satisfy 0 <= R <= 1. Received {value}.")
+    for label, value in (
+        ("alpha_resonant_per_m", alpha_resonant_per_m),
+        ("L_parasitic_rt", parasitic_roundtrip_loss),
+    ):
+        if value < 0.0:
+            raise ValueError(f"{label} must be non-negative. Received {value}.")
+
+    input_coupler_transmission = 1.0 - reflectivity_input
+    output_coupling_transmission = 1.0 - reflectivity_output
+    bulk_roundtrip_loss = distributed_roundtrip_loss(alpha_resonant_per_m, roundtrip_propagation_length_m)
+    internal_roundtrip_loss = input_coupler_transmission + bulk_roundtrip_loss + parasitic_roundtrip_loss
+
+    if output_coupling_transmission >= 1.0:
+        raise ValueError("Output coupling transmission must be less than 1.")
+    if internal_roundtrip_loss >= 1.0:
+        raise ValueError(
+            "Internal round-trip loss must be less than 1. Check R1_resonant, alpha_resonant_per_m, and L_parasitic_rt."
+        )
+
+    return {
+        "loss_model_source": source,
+        "roundtrip_propagation_length_m": float(roundtrip_propagation_length_m),
+        "reflectivity_input_resonant": float(reflectivity_input),
+        "reflectivity_output_resonant": float(reflectivity_output),
+        "input_coupler_transmission": float(input_coupler_transmission),
+        "output_coupling_transmission": float(output_coupling_transmission),
+        "alpha_resonant_per_m": float(alpha_resonant_per_m),
+        "bulk_roundtrip_loss": float(bulk_roundtrip_loss),
+        "parasitic_roundtrip_loss": float(parasitic_roundtrip_loss),
+        "internal_roundtrip_loss": float(internal_roundtrip_loss),
+    }
+
+
+def compute_decay_rates(
+    L_optical_m: float,
+    c_m_per_s: float,
+    output_coupling_transmission: float,
+    internal_roundtrip_loss: float,
+):
+    """Compute cavity decay rates from explicit output-coupling and internal round-trip loss."""
+    kappa_ext = (c_m_per_s / (2.0 * L_optical_m)) * float(output_coupling_transmission)
+    kappa_loss = (c_m_per_s / (2.0 * L_optical_m)) * float(internal_roundtrip_loss)
     kappa_total = kappa_ext + kappa_loss
     return {
         "kappa_ext_rad_s": float(kappa_ext),
+        "kappa_ext_Hz": float(kappa_ext / (2.0 * np.pi)),
         "kappa_loss_rad_s": float(kappa_loss),
+        "kappa_loss_Hz": float(kappa_loss / (2.0 * np.pi)),
+        "kappa_int_rad_s": float(kappa_loss),
+        "kappa_int_Hz": float(kappa_loss / (2.0 * np.pi)),
         "kappa_total_rad_s": float(kappa_total),
         "kappa_total_Hz": float(kappa_total / (2.0 * np.pi)),
         "escape_efficiency": float(kappa_ext / kappa_total) if kappa_total != 0 else np.nan,
