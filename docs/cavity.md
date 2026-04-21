@@ -60,7 +60,7 @@ The cavity layer exports:
 - `kappa_total_Hz`
 - `escape_efficiency`
 
-See [physics.md](physics.md) for the physical meaning of these loss quantities.
+See [03_physics.md](03_physics.md) for the physical meaning of these loss quantities.
 
 ## Outputs
 
@@ -76,4 +76,4 @@ Its compact `results` payload includes:
 
 Heavy internal details such as `q` parameters and `m_factor` are kept in `debug_data`.
 
-For the JSON layout, see [outputs.md](outputs.md).
+For the JSON layout, see [04_outputs.md](04_outputs.md).

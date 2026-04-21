@@ -1,4 +1,4 @@
-# Architecture
+# 01 — Architecture
 
 The project is organized as a one-way pipeline:
 
@@ -65,4 +65,4 @@ This keeps the layer boundaries explicit:
 - nonlinear operating-point selection lives in `crystal`
 - quantum-noise and squeezing calculations live in `opo`
 
-For the detailed run order, see [workflow.md](workflow.md). For the JSON interface, see [outputs.md](outputs.md).
+For the detailed run order, see [02_workflow.md](02_workflow.md). For the JSON interface, see [04_outputs.md](04_outputs.md).

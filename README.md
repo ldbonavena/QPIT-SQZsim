@@ -69,11 +69,11 @@ Crystal module files:
 
 High-level docs:
 
-- [Overview](docs/overview.md)
-- [Architecture](docs/architecture.md)
-- [Workflow](docs/workflow.md)
-- [Physics](docs/physics.md)
-- [Outputs](docs/outputs.md)
+- [Overview](docs/00_overview.md)
+- [Architecture](docs/01_architecture.md)
+- [Workflow](docs/02_workflow.md)
+- [Physics](docs/03_physics.md)
+- [Outputs](docs/04_outputs.md)
 
 Per-layer docs:
 

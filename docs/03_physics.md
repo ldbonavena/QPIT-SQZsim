@@ -1,4 +1,4 @@
-# Physics
+# 03 — Physics
 
 This project uses a compact layered model. The focus is on a clear operating-point pipeline rather than a full general quantum-optics treatment.
 

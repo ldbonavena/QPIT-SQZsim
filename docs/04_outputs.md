@@ -1,4 +1,4 @@
-# Outputs
+# 04 — Outputs
 
 The simulator writes one JSON output per layer. The current structure is:
 

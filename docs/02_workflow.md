@@ -1,4 +1,4 @@
-# Workflow
+# 02 — Workflow
 
 The simulator is meant to run in three explicit steps:
 
