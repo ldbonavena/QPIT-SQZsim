@@ -1,34 +1,78 @@
 # QPIT-SQZsim
 
-`QPIT-SQZsim` is a layered simulator for cavity geometry, nonlinear crystal operating points, and a compact below-threshold OPO model for squeezing studies.
+QPIT-SQZsim is a simulation framework for designing and analyzing optical parametric oscillators (OPOs), with a focus on cavity design, nonlinear crystal operation, and below-threshold squeezing performance.
 
-The pipeline is:
+The project is structured as a modular pipeline:
 
-`cavity -> crystal -> OPO`
+cavity → crystal → OPO
 
-- The cavity layer computes geometry-dependent mode properties and resonant loss rates.
-- The crystal layer computes phase matching, double resonance, and the selected active operating point.
-- The OPO layer consumes those exported quantities and builds the operating-point model, Langevin scaffold, and squeezing spectra.
+---
+
+## What this project does
+
+This framework allows you to:
+
+- Design optical cavities and evaluate resonator properties and losses
+- Compute phase matching and double-resonance conditions in nonlinear crystals
+- Select physically consistent operating points
+- Simulate below-threshold OPO behavior and squeezing spectra
+
+---
+
+## Simulation Pipeline
+
+The simulation is performed in three sequential steps:
+
+```
+cavity
+   ↓
+crystal
+   ↓
+OPO
+```
+
+- **Cavity**: computes geometry, mode size, FSR, and loss rates (kappa, escape efficiency)
+- **Crystal**: computes phase matching and double resonance, and selects the active operating point
+- **OPO**: builds the operating-point model and computes squeezing spectra
+
+Each stage consumes the output of the previous one.
+
+---
 
 ## Installation
+
+Clone the repository:
 
 ```bash
 git clone <repository-url>
 cd QPIT-SQZsim
+```
+
+Create a virtual environment (recommended):
+
+```bash
 python -m venv .venv
-source .venv/bin/activate
+source .venv/bin/activate   # macOS/Linux
+# .venv\Scripts\activate    # Windows
+```
+
+Install dependencies:
+
+```bash
 pip install -r requirements.txt
 ```
 
-Optional editable install:
+Optional (editable install):
 
 ```bash
 pip install -e .
 ```
 
+---
+
 ## Quick Start
 
-Run the simulation pipeline in order:
+Run the full simulation pipeline:
 
 ```bash
 python src/cavity/cavity_main.py
@@ -38,36 +82,29 @@ python src/opo/opo_main.py
 
 Each step depends on the outputs produced by the previous one.
 
-## Source Layout
+---
 
-Main source directories:
+## Project Structure
 
-- `src/cavity`: cavity geometry, resonator mode, and loss model
-- `src/crystal`: phase matching, double resonance, operating-point selection, and nonlinear overlap
-- `src/opo`: below-threshold OPO model, Langevin scaffold, and squeezing spectra
-- `src/common`: shared utilities such as results-path helpers
+Main modules:
 
-Crystal module files:
+- `src/cavity` — cavity geometry, mode properties, and loss model
+- `src/crystal` — phase matching, double resonance, and operating-point selection
+- `src/opo` — OPO model, Langevin equations, and squeezing spectra
 
-- `crystal_main.py`
-- `crystal_workflow.py`
-- `crystal_materials.py`
-- `crystal_phase_matching.py`
-- `crystal_mode_matching.py`
-- `crystal_boyd_kleinman.py`
-- `crystal_double_resonance_scan.py`
-- `crystal_polarization_resonance.py`
-- `crystal_plotter.py`
+For detailed concepts and definitions, see the documentation in the `docs/` directory.
 
-## Key Concepts
+---
 
-- `operating_point_mode`: the crystal-side rule used to select the active operating point. The current choices are `phase_matching` and `double_resonance`.
-- `escape_efficiency`: the cavity output-coupling fraction, `kappa_ext_Hz / kappa_total_Hz`.
-- Below-threshold OPO model: the current OPO layer is a compact degenerate below-threshold model intended for operating-point studies and squeezing spectra, not full multimode or non-degenerate dynamics.
+## Outputs
+
+Each stage writes results to disk (JSON + plots). These outputs are used as inputs for the next stage in the pipeline.
+
+---
 
 ## Documentation
 
-High-level docs:
+High-level documentation:
 
 - [Overview](docs/00_overview.md)
 - [Architecture](docs/01_architecture.md)
@@ -75,8 +112,19 @@ High-level docs:
 - [Physics](docs/03_physics.md)
 - [Outputs](docs/04_outputs.md)
 
-Per-layer docs:
+Module-specific documentation:
 
 - [Cavity](docs/modules/cavity.md)
 - [Crystal](docs/modules/crystal.md)
 - [OPO](docs/modules/opo.md)
+
+---
+
+## Notes
+
+- The current OPO model is:
+  - below-threshold
+  - degenerate
+  - single-mode
+
+- Full non-degenerate and multimode dynamics are not yet implemented.
