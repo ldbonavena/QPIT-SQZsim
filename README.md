@@ -77,6 +77,6 @@ High-level docs:
 
 Per-layer docs:
 
-- [Cavity](docs/cavity.md)
-- [Crystal](docs/crystal.md)
-- [OPO](docs/opo.md)
+- [Cavity](docs/modules/cavity.md)
+- [Crystal](docs/modules/crystal.md)
+- [OPO](docs/modules/opo.md)

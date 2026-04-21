@@ -5,6 +5,8 @@ This documentation is split into two layers:
 - conceptual docs for the overall pipeline and interfaces
 - per-layer docs for the cavity, crystal, and OPO modules
 
+Top-level files explain the project conceptually. `docs/modules/` contains layer-specific technical documentation.
+
 ## Documentation order
 
 1. Overview -> `docs/00_overview.md`
@@ -15,9 +17,9 @@ This documentation is split into two layers:
 
 Module-specific documentation:
 
-- Cavity -> `docs/cavity.md`
-- Crystal -> `docs/crystal.md`
-- OPO -> `docs/opo.md`
+- Cavity -> `docs/modules/cavity.md`
+- Crystal -> `docs/modules/crystal.md`
+- OPO -> `docs/modules/opo.md`
 
 ## Conceptual Docs
 
@@ -28,8 +30,8 @@ Module-specific documentation:
 
 ## Per-Layer Docs
 
-- [cavity.md](cavity.md): cavity-layer inputs, supported geometries, exported loss quantities, and produced outputs
-- [crystal.md](crystal.md): crystal-layer operating-point logic, scans, `selected_operating_point`, and `active_for_opo`
-- [opo.md](opo.md): OPO-layer inputs, use of `active_for_opo`, operating-point model, and generated plots
+- [cavity.md](modules/cavity.md): cavity-layer inputs, supported geometries, exported loss quantities, and produced outputs
+- [crystal.md](modules/crystal.md): crystal-layer operating-point logic, scans, `selected_operating_point`, and `active_for_opo`
+- [opo.md](modules/opo.md): OPO-layer inputs, use of `active_for_opo`, operating-point model, and generated plots
 
 Use the conceptual docs to understand the pipeline first, then the per-layer docs when working on a specific module.

@@ -68,4 +68,4 @@ It does not include:
 - pump depletion
 - a full first-principles threshold derivation
 
-For layer-specific implementation details, see [cavity.md](cavity.md), [crystal.md](crystal.md), and [opo.md](opo.md).
+For layer-specific implementation details, see [cavity.md](modules/cavity.md), [crystal.md](modules/crystal.md), and [opo.md](modules/opo.md).

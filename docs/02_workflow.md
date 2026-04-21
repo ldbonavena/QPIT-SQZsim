@@ -70,4 +70,4 @@ In that case, rerun:
 2. `python src/crystal/crystal_main.py`
 3. `python src/opo/opo_main.py`
 
-For the module-specific details of each stage, see [cavity.md](cavity.md), [crystal.md](crystal.md), and [opo.md](opo.md).
+For the module-specific details of each stage, see [cavity.md](modules/cavity.md), [crystal.md](modules/crystal.md), and [opo.md](modules/opo.md).

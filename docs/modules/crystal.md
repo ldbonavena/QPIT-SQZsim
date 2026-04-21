@@ -77,4 +77,4 @@ The crystal layer also exports compact top-level crystal `results` for inspectio
 - In `double_resonance` mode, the selected crystal length may differ from the cavity file.
 - When that happens, OPO requires the cavity workflow to be rerun with the selected crystal length.
 
-For the execution order, see [02_workflow.md](02_workflow.md). For the JSON structure, see [04_outputs.md](04_outputs.md).
+For the execution order, see [02_workflow.md](../02_workflow.md). For the JSON structure, see [04_outputs.md](../04_outputs.md).

@@ -67,4 +67,4 @@ It contains:
 
 This block is the selected crystal operating point as consumed by OPO.
 
-For the technical meaning of the layer-specific fields, see [cavity.md](cavity.md), [crystal.md](crystal.md), and [opo.md](opo.md).
+For the technical meaning of the layer-specific fields, see [cavity.md](modules/cavity.md), [crystal.md](modules/crystal.md), and [opo.md](modules/opo.md).

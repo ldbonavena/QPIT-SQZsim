@@ -78,4 +78,4 @@ It is not:
 - a multimode model
 - a full first-principles threshold model
 
-For the physical scope of the model, see [03_physics.md](03_physics.md). For the output structure, see [04_outputs.md](04_outputs.md).
+For the physical scope of the model, see [03_physics.md](../03_physics.md). For the output structure, see [04_outputs.md](../04_outputs.md).
