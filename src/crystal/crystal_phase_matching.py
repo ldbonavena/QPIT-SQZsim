@@ -7,6 +7,7 @@ from typing import Callable
 
 import numpy as np
 
+from common.constants import TWO_PI
 
 def sinc(x: np.ndarray | float) -> np.ndarray | float:
     """Return normalized ``sin(x)/x`` with safe handling around zero."""
@@ -44,7 +45,7 @@ def k_of_n(wavelength_m: np.ndarray | float, n: np.ndarray | float) -> np.ndarra
     """Return wave-vector magnitude ``k = 2πn/λ`` in rad/m."""
     wl = np.asarray(wavelength_m, dtype=float)
     nn = np.asarray(n, dtype=float)
-    k = 2.0 * np.pi * nn / wl
+    k = TWO_PI * nn / wl
     return k if isinstance(wavelength_m, np.ndarray) or isinstance(n, np.ndarray) else float(k)
 
 
@@ -83,13 +84,13 @@ def compute_design_poling_period(
     return DesignPolingResult(
         temperature_K=float(temperature_K),
         delta_k_bulk_rad_per_m=float(delta_k_bulk),
-        Lambda0_design_m=float(2.0 * np.pi * qpm_order_m / delta_k_bulk),
+        Lambda0_design_m=float(TWO_PI * qpm_order_m / delta_k_bulk),
     )
 
 
 def qpm_grating_k(Lambda_m: float) -> float:
     """Return QPM grating vector ``K_g = 2π/Λ`` in rad/m."""
-    return float(2.0 * np.pi / Lambda_m)
+    return float(TWO_PI / Lambda_m)
 
 
 def delta_k_qpm(delta_k_rad_per_m: float, Lambda_m: float, m: int = 1) -> float:

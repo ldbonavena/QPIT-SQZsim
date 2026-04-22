@@ -7,6 +7,7 @@ from typing import Any
 
 import numpy as np
 
+from common.constants import PI
 from .crystal_boyd_kleinman import boyd_kleinman_efficiency, compute_focusing_parameter
 
 
@@ -39,7 +40,7 @@ class ModeMatchingResult:
 
 def rayleigh_range_in_medium(w0_m: float, wavelength_m: float, n: float) -> float:
     """Return Rayleigh range in medium ``zR = π n w0^2 / λ``."""
-    return float(np.pi * n * w0_m * w0_m / wavelength_m)
+    return float(PI * n * w0_m * w0_m / wavelength_m)
 
 
 def focusing_parameter(crystal_length_m: float, zR_m: float) -> float:

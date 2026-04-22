@@ -5,6 +5,7 @@ from __future__ import annotations
 import numpy as np
 import sympy as sp
 
+from common.constants import PI, TWO_PI
 from cavity_abcd import CavityAbcdBuilder
 from cavity_abcd import Abcd
 
@@ -24,7 +25,7 @@ def cavity_q_parameter(matrix):
 def beam_waist_from_q(q_parameter, wavelength, refractive_index=1):
     """Compute beam waist radius from q parameter imaginary part."""
     q_im = np.imag(q_parameter)
-    return np.sqrt(wavelength * q_im / (refractive_index * np.pi))
+    return np.sqrt(wavelength * q_im / (refractive_index * PI))
 
 
 def optical_roundtrip_length(cavity_length_m, optical_crystal_length_m, n_crystal):
@@ -140,8 +141,8 @@ def compute_decay_rates(
     roundtrip_frequency_hz = float(c_m_per_s / L_optical_m)
     kappa_ext_hz_like = 0.5 * roundtrip_frequency_hz * float(output_coupling_transmission)
     kappa_loss_hz_like = 0.5 * roundtrip_frequency_hz * float(internal_roundtrip_loss)
-    kappa_ext = 2.0 * np.pi * kappa_ext_hz_like
-    kappa_loss = 2.0 * np.pi * kappa_loss_hz_like
+    kappa_ext = TWO_PI * kappa_ext_hz_like
+    kappa_loss = TWO_PI * kappa_loss_hz_like
     kappa_total = kappa_ext + kappa_loss
     return {
         "kappa_ext_rad_s": float(kappa_ext),

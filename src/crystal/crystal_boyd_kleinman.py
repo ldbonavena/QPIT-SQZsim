@@ -9,12 +9,12 @@ import warnings
 import numpy as np
 
 try:
-    from common.constants import C_M_PER_S
+    from common.constants import C_M_PER_S, PI, TWO_PI
 except ImportError:
     import sys
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from common.constants import C_M_PER_S
+    from common.constants import C_M_PER_S, PI, TWO_PI
 
 from .crystal_phase_matching import delta_k_eff_T, delta_k_qpm, delta_k_three_wave, poling_period_T
 
@@ -51,7 +51,7 @@ def beam_waist_from_rayleigh_range(
     """Return the Gaussian beam waist consistent with ``zR = pi * n * w0^2 / lambda``."""
     if rayleigh_range_m <= 0 or wavelength_m <= 0 or refractive_index <= 0:
         return np.nan
-    return float(np.sqrt(rayleigh_range_m * wavelength_m / (np.pi * refractive_index)))
+    return float(np.sqrt(rayleigh_range_m * wavelength_m / (PI * refractive_index)))
 
 
 def boyd_kleinman_integral(
@@ -132,7 +132,7 @@ def resolve_bk_reference_period(
         n_s=n_s_center,
         n_i=n_i_center,
     )
-    return float(2.0 * np.pi * qpm_order_m / delta_k_center)
+    return float(TWO_PI * qpm_order_m / delta_k_center)
 
 
 def evaluate_bk_h(
@@ -176,14 +176,14 @@ def angular_frequency_from_wavelength(wavelength_m: float) -> float:
     """Return angular frequency ``omega = 2 pi c / lambda``."""
     if wavelength_m <= 0.0:
         return float(np.nan)
-    return float(2.0 * np.pi * C_M_PER_S / wavelength_m)
+    return float(TWO_PI * C_M_PER_S / wavelength_m)
 
 
 def wavelength_from_angular_frequency(angular_frequency_rad_per_s: float) -> float:
     """Return wavelength ``lambda = 2 pi c / omega``."""
     if angular_frequency_rad_per_s <= 0.0:
         return float(np.nan)
-    return float(2.0 * np.pi * C_M_PER_S / angular_frequency_rad_per_s)
+    return float(TWO_PI * C_M_PER_S / angular_frequency_rad_per_s)
 
 
 # BK sweep helpers
@@ -557,7 +557,7 @@ def compute_qpm_length_poling_map(
     length_over_lcoh = np.asarray(length_over_lcoh, dtype=float)
     poling_domain_length_over_lcoh = np.asarray(poling_domain_length_over_lcoh, dtype=float)
     slice_values_over_lcoh_arr = np.asarray(slice_values_over_lcoh, dtype=float)
-    delta_k = np.pi
+    delta_k = PI
     poling_over_lcoh = poling_domain_length_over_lcoh
 
     relative_field_intensity = np.full((len(poling_over_lcoh), len(length_over_lcoh)), np.nan, dtype=float)
@@ -711,7 +711,7 @@ def _build_optimal_bk_reference_state(
     if not np.isfinite(grating_vector_target_rad_per_m) or grating_vector_target_rad_per_m <= 0.0:
         lambda_reference_m = float(np.nan)
     else:
-        lambda_T_target_m = float(2.0 * np.pi * qpm_order_m / grating_vector_target_rad_per_m)
+        lambda_T_target_m = float(TWO_PI * qpm_order_m / grating_vector_target_rad_per_m)
         thermal_scale = 1.0 + alpha_perK * (wavelength_scan_temperature_K - T0_K)
         lambda_reference_m = float(lambda_T_target_m / thermal_scale) if thermal_scale > 0.0 else float(np.nan)
         if bk_config.recenter_to_phase_match:
@@ -927,7 +927,7 @@ def _build_reference_metadata(
                 n_i=float(n_i_of_T(temperature_opt_K)),
             )
         )
-        l_coh_reference_m = float(np.pi / abs(delta_k_bulk_reference_rad_per_m)) if delta_k_bulk_reference_rad_per_m != 0.0 else np.nan
+        l_coh_reference_m = float(PI / abs(delta_k_bulk_reference_rad_per_m)) if delta_k_bulk_reference_rad_per_m != 0.0 else np.nan
 
     return {
         "reference_kind": reference_kind,

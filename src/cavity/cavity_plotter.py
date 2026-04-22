@@ -5,6 +5,7 @@ from __future__ import annotations
 import numpy as np
 import matplotlib.pyplot as plt
 
+from common.constants import PI
 from cavity_analysis import beam_waist_from_q
 
 
@@ -85,7 +86,7 @@ class CavityPlotter:
     @staticmethod
     def beam_radius(z, waist, wavelength):
         """Gaussian beam radius evolution around a waist at z=0."""
-        rayleigh = np.pi * waist**2 / wavelength
+        rayleigh = PI * waist**2 / wavelength
         return waist * np.sqrt(1 + (z / rayleigh) ** 2)
 
     @staticmethod

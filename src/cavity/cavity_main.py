@@ -26,6 +26,7 @@ for _path in (str(_HERE), str(_SRC_ROOT)):
     if _path not in sys.path:
         sys.path.insert(0, _path)
 
+from common.constants import C_M_PER_S, DEG_TO_RAD
 from cavity_plotter import CavityPlotter
 from cavity_workflow import (
     build_cavity_context,
@@ -46,11 +47,7 @@ from cavity_workflow import (
 # Choose: "bowtie", "linear", "triangle", "hemilithic", or "monolithic"
 GEOMETRY = "monolithic"
 
-# %%
-
-# Numeric parameters
-
-c_num = 299792458.0
+# %% Select parameters
 
 f_crystal_length = 4.0975e-3
 f_n_crystal = 1.78
@@ -68,7 +65,7 @@ L_parasitic_rt = 0.0
 f_detuning_Hz = 0.0
 
 # Bow-tie parameters
-f_theta_AOI = 6 * np.pi / 180.0
+f_theta_AOI = 6 * DEG_TO_RAD
 f_short_axis = np.arange(56e-3, 71e-3, 0.01e-3)
 f_long_axis = np.arange(70e-3, 120e-3, 0.5e-3)
 mesh_short_axis, mesh_long_axis = np.meshgrid(f_short_axis, f_long_axis)
@@ -147,7 +144,7 @@ single_point_parameters = {
     "single_point_RoC_m": 10e-3,
     "bowtie_short_axis_m": 68e-3,
     "bowtie_long_axis_m": 90e-3,
-    "bowtie_theta_AOI_rad": 6 * np.pi / 180.0,
+    "bowtie_theta_AOI_rad": 6 * DEG_TO_RAD,
     "linear_cavity_length_m": 50e-3,
     "triangle_width_m": 80e-3,
     "triangle_height_m": 30e-3,
@@ -164,7 +161,7 @@ print_single_point_summary(GEOMETRY, single_point)
 derived = compute_cavity_derived_quantities(
     context,
     single_point,
-    c_m_per_s=c_num,
+    c_m_per_s=C_M_PER_S,
     detuning_Hz=f_detuning_Hz,
     loss_model_parameters=parameters,
 )
@@ -174,7 +171,7 @@ print_derived_cavity_quantities(derived)
 # Export simulation output
 
 cavity_result = build_cavity_simulation_result(context, single_point, derived)
-simulation_output = build_cavity_simulation_output(cavity_result, c_m_per_s=c_num)
+simulation_output = build_cavity_simulation_output(cavity_result, c_m_per_s=C_M_PER_S)
 saved_outputs = save_cavity_outputs(GEOMETRY, simulation_output, fig_stability, fig_waist)
 
 print(f"Saved simulation output to: {saved_outputs['cavity_output_json']}")

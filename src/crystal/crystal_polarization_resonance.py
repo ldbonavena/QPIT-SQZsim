@@ -6,13 +6,14 @@ from typing import Any, Callable
 
 import numpy as np
 
+from common.constants import PI, TWO_PI
 
 DEFAULT_RESONANCE_TOLERANCE_RAD = 1.0e-2
 
 
 def _wrap_phase_to_pi(phase_rad: float) -> float:
     """Wrap a phase angle into the interval [-pi, pi]."""
-    return float((phase_rad + np.pi) % (2.0 * np.pi) - np.pi)
+    return float((phase_rad + PI) % TWO_PI - PI)
 
 
 def _resolve_roundtrip_lengths(cavity_data: dict[str, Any]) -> tuple[float, float]:
@@ -58,8 +59,8 @@ def compute_polarization_resonance_diagnostic(
     signal_optical_roundtrip_length_m = free_space_roundtrip_length_m + n_signal * crystal_roundtrip_length_m
     idler_optical_roundtrip_length_m = free_space_roundtrip_length_m + n_idler * crystal_roundtrip_length_m
 
-    phi_signal_rad = float((2.0 * np.pi / wavelength_s_m) * signal_optical_roundtrip_length_m)
-    phi_idler_rad = float((2.0 * np.pi / wavelength_i_m) * idler_optical_roundtrip_length_m)
+    phi_signal_rad = float((TWO_PI / wavelength_s_m) * signal_optical_roundtrip_length_m)
+    phi_idler_rad = float((TWO_PI / wavelength_i_m) * idler_optical_roundtrip_length_m)
     delta_phi_rad = float(phi_signal_rad - phi_idler_rad)
     delta_phi_wrapped_rad = _wrap_phase_to_pi(delta_phi_rad)
 

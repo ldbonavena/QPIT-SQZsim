@@ -11,6 +11,11 @@ from dataclasses import dataclass
 
 import numpy as np
 
+try:
+    from ..common.constants import TWO_PI
+except ImportError:
+    from common.constants import TWO_PI
+
 from .opo_langevin import OPOLangevinModel
 from .opo_model import OPOModelResult, OPOParameters
 
@@ -91,8 +96,8 @@ def compute_squeezing_spectra(
     theta = float(parameters.lo_phase_rad)
     measurement_vector = np.array([np.cos(theta), np.sin(theta)], dtype=float)
 
-    omega = 2.0 * np.pi * frequency_hz
-    linewidth_rad_s = max(2.0 * np.pi * max(float(model.cavity_kappa_total_Hz), 0.0), np.finfo(float).eps)
+    omega = TWO_PI * frequency_hz
+    linewidth_rad_s = max(TWO_PI * max(float(model.cavity_kappa_total_Hz), 0.0), np.finfo(float).eps)
 
     drift_matrix = np.asarray(langevin.drift_matrix, dtype=float)
     input_matrix = np.asarray(langevin.input_matrix, dtype=float)

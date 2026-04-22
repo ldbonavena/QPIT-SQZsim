@@ -13,6 +13,11 @@ from typing import Any
 
 import numpy as np
 
+try:
+    from ..common.constants import PI, TWO_PI
+except ImportError:
+    from common.constants import PI, TWO_PI
+
 CRYSTAL_LENGTH_CONSISTENCY_TOLERANCE_M = 1e-9
 
 
@@ -211,18 +216,18 @@ def derive_opo_quantities(
         waist_crystal_m_raw = 30e-6
         waist_source = "fallback_30um"
     waist_crystal_m = max(float(waist_crystal_m_raw), 1e-12)
-    effective_mode_area_m2 = max(float(np.pi * waist_crystal_m**2), 1e-24)
+    effective_mode_area_m2 = max(float(PI * waist_crystal_m**2), 1e-24)
 
     kappa_ext_hz = float(
         cavity_results.get(
             "kappa_ext_Hz",
-            float(cavity_results.get("kappa_ext_rad_s", 0.0)) / (2.0 * np.pi),
+            float(cavity_results.get("kappa_ext_rad_s", 0.0)) / TWO_PI,
         )
     )
     kappa_loss_hz = float(
         cavity_results.get(
             "kappa_loss_Hz",
-            float(cavity_results.get("kappa_loss_rad_s", 0.0)) / (2.0 * np.pi),
+            float(cavity_results.get("kappa_loss_rad_s", 0.0)) / TWO_PI,
         )
     )
     kappa_total_hz = float(

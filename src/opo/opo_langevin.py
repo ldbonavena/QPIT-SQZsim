@@ -12,6 +12,11 @@ from dataclasses import dataclass
 
 import numpy as np
 
+try:
+    from ..common.constants import TWO_PI
+except ImportError:
+    from common.constants import TWO_PI
+
 from .opo_model import OPOModelResult
 
 
@@ -29,8 +34,8 @@ class OPOLangevinModel:
 def build_langevin_model(model: OPOModelResult) -> OPOLangevinModel:
     """Construct a minimal quadrature-basis Langevin model for a degenerate below-threshold OPO."""
     linewidth_hz = max(model.cavity_kappa_total_Hz, 0.0)
-    linewidth_rad_s = 2.0 * np.pi * linewidth_hz
-    detuning_rad_s = 2.0 * np.pi * model.cavity_detuning_Hz
+    linewidth_rad_s = TWO_PI * linewidth_hz
+    detuning_rad_s = TWO_PI * model.cavity_detuning_Hz
     sigma = model.pump_parameter
 
     # The diagonal entries represent quadrature damping modified by the

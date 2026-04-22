@@ -10,11 +10,13 @@ from typing import Any
 import numpy as np
 
 try:
+    from common.constants import TWO_PI
     from common.results_paths import ensure_geometry_results_subdirs, get_cavity_results_dir
 except ImportError:
     import sys
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from common.constants import TWO_PI
     from common.results_paths import ensure_geometry_results_subdirs, get_cavity_results_dir
 
 from cavity_analysis import (
@@ -526,7 +528,7 @@ def compute_cavity_derived_quantities(
         "kappa_total_rad_s": decay["kappa_total_rad_s"],
         "kappa_total_Hz": decay["kappa_total_Hz"],
         "escape_efficiency": decay["escape_efficiency"],
-        "detuning_rad_s": float(2.0 * np.pi * detuning_Hz),
+        "detuning_rad_s": float(TWO_PI * detuning_Hz),
         "gouy_phase_sagittal_rad": gouy["gouy_phase_sagittal_rad"],
         "gouy_phase_tangential_rad": gouy["gouy_phase_tangential_rad"],
     }
@@ -654,7 +656,7 @@ def print_derived_cavity_quantities(results: dict[str, float]) -> None:
         for label, value in rows:
             print(f"{label:<32}: {value}")
 
-    detuning_hz = results["detuning_rad_s"] / (2.0 * np.pi)
+    detuning_hz = results["detuning_rad_s"] / TWO_PI
     _print_specs(
         "Derived cavity figures",
         [

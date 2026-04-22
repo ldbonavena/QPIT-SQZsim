@@ -5,7 +5,10 @@ from __future__ import annotations
 import matplotlib.pyplot as plt
 import numpy as np
 
-_C_M_PER_S = 299792458.0
+try:
+    from ..common.constants import C_M_PER_S, TWO_PI
+except ImportError:
+    from common.constants import C_M_PER_S, TWO_PI
 
 
 def plot_opo_spectrum_summary(spectrum: dict[str, list[float]]):
@@ -93,10 +96,10 @@ def plot_opo_resonance_diagnostic(
 
     fsr_signal_hz = resonance.get("fsr_signal_Hz")
     if fsr_signal_hz is None and "signal_optical_roundtrip_length_m" in resonance:
-        fsr_signal_hz = _C_M_PER_S / float(resonance["signal_optical_roundtrip_length_m"])
+        fsr_signal_hz = C_M_PER_S / float(resonance["signal_optical_roundtrip_length_m"])
     fsr_idler_hz = resonance.get("fsr_idler_Hz")
     if fsr_idler_hz is None and "idler_optical_roundtrip_length_m" in resonance:
-        fsr_idler_hz = _C_M_PER_S / float(resonance["idler_optical_roundtrip_length_m"])
+        fsr_idler_hz = C_M_PER_S / float(resonance["idler_optical_roundtrip_length_m"])
     if fsr_signal_hz is None or fsr_idler_hz is None:
         raise KeyError("polarization_resonance is missing FSR data and optical round-trip lengths")
     fsr_signal_hz = float(fsr_signal_hz)
@@ -121,7 +124,7 @@ def plot_opo_resonance_diagnostic(
     mean_fsr_hz = 0.5 * (fsr_signal_hz + fsr_idler_hz)
     mode_count = 5
     mode_indices = np.arange(-mode_count, mode_count + 1, dtype=float)
-    center_offset_hz = (delta_phi_wrapped_rad / (2.0 * np.pi)) * mean_fsr_hz
+    center_offset_hz = (delta_phi_wrapped_rad / TWO_PI) * mean_fsr_hz
 
     signal_centers_hz = mode_indices * fsr_signal_hz
     idler_centers_hz = center_offset_hz + mode_indices * fsr_idler_hz
