@@ -486,9 +486,12 @@ def compute_cavity_derived_quantities(
         if L_rt is not None:
             effective_loss_parameters["f_L_rt"] = float(L_rt)
 
+    # ``alpha_resonant_per_m`` is defined as distributed loss in the resonant
+    # crystal medium, so it should use the crystal round-trip propagation
+    # length rather than the full cavity path.
     loss_model = resolve_resonant_loss_model(
         effective_loss_parameters,
-        roundtrip_propagation_length_m=operating_point.cavity_length,
+        roundtrip_propagation_length_m=operating_point.optical_crystal_length,
     )
     decay = compute_decay_rates(
         optical_roundtrip_length_m,

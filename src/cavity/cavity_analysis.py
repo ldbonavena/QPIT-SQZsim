@@ -6,7 +6,7 @@ import numpy as np
 import sympy as sp
 
 from cavity_abcd import CavityAbcdBuilder
-from optics_abcd import Abcd
+from cavity_abcd import Abcd
 
 
 def cavity_stability(matrix):
@@ -38,7 +38,7 @@ def fsr_from_roundtrip_length(L_optical_m, c_m_per_s):
 
 
 def distributed_roundtrip_loss(alpha_per_m: float, roundtrip_propagation_length_m: float) -> float:
-    """Return distributed round-trip power loss from an intensity attenuation coefficient."""
+    """Return distributed round-trip power loss from a crystal-medium attenuation coefficient."""
     alpha = max(float(alpha_per_m), 0.0)
     length_m = max(float(roundtrip_propagation_length_m), 0.0)
     return float(1.0 - np.exp(-alpha * length_m))
@@ -132,19 +132,26 @@ def compute_decay_rates(
     output_coupling_transmission: float,
     internal_roundtrip_loss: float,
 ):
-    """Compute cavity decay rates from explicit output-coupling and internal round-trip loss."""
-    kappa_ext = (c_m_per_s / (2.0 * L_optical_m)) * float(output_coupling_transmission)
-    kappa_loss = (c_m_per_s / (2.0 * L_optical_m)) * float(internal_roundtrip_loss)
+    """Compute cavity decay rates.
+
+    ``kappa_*_rad_s`` are angular decay rates in rad/s.
+    ``kappa_*_Hz`` are the corresponding cycle-per-second rates.
+    """
+    roundtrip_frequency_hz = float(c_m_per_s / L_optical_m)
+    kappa_ext_hz_like = 0.5 * roundtrip_frequency_hz * float(output_coupling_transmission)
+    kappa_loss_hz_like = 0.5 * roundtrip_frequency_hz * float(internal_roundtrip_loss)
+    kappa_ext = 2.0 * np.pi * kappa_ext_hz_like
+    kappa_loss = 2.0 * np.pi * kappa_loss_hz_like
     kappa_total = kappa_ext + kappa_loss
     return {
         "kappa_ext_rad_s": float(kappa_ext),
-        "kappa_ext_Hz": float(kappa_ext / (2.0 * np.pi)),
+        "kappa_ext_Hz": float(kappa_ext_hz_like),
         "kappa_loss_rad_s": float(kappa_loss),
-        "kappa_loss_Hz": float(kappa_loss / (2.0 * np.pi)),
+        "kappa_loss_Hz": float(kappa_loss_hz_like),
         "kappa_int_rad_s": float(kappa_loss),
-        "kappa_int_Hz": float(kappa_loss / (2.0 * np.pi)),
+        "kappa_int_Hz": float(kappa_loss_hz_like),
         "kappa_total_rad_s": float(kappa_total),
-        "kappa_total_Hz": float(kappa_total / (2.0 * np.pi)),
+        "kappa_total_Hz": float(kappa_ext_hz_like + kappa_loss_hz_like),
         "escape_efficiency": float(kappa_ext / kappa_total) if kappa_total != 0 else np.nan,
     }
 

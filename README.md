@@ -92,6 +92,14 @@ Main modules:
 - `src/crystal` — phase matching, double resonance, and operating-point selection
 - `src/opo` — OPO model, Langevin equations, and squeezing spectra
 
+Cavity module files:
+
+- `cavity_main.py` — cavity entry point and parameter selection
+- `cavity_workflow.py` — high-level cavity workflow and JSON export
+- `cavity_abcd.py` — unified ABCD optics module with generic ABCD utilities, validation helpers, and cavity round-trip builders
+- `cavity_analysis.py` — mode extraction and derived cavity quantities
+- `cavity_plotter.py` — stability and waist plots
+
 For detailed concepts and definitions, see the documentation in the `docs/` directory.
 
 ---
