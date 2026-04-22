@@ -55,7 +55,94 @@ The exact geometry inputs depend on the selected geometry, but they include quan
 - mirror or facet radius of curvature
 - cavity lengths, gaps, widths, or heights depending on geometry
 
+
 These inputs are defined in `cavity_main.py` and interpreted in `cavity_workflow.py` and the geometry-specific ABCD builders in `cavity_abcd.py`.
+
+## Geometry-Specific Inputs
+
+The relevant input parameters depend on the selected geometry.
+
+### Monolithic
+Uses:
+- `f_crystal_length`
+- `f_n_crystal`
+- `f_RoC`
+- `f_wavelength`
+- `R1_resonant`, `R2_resonant`
+- `alpha_resonant_per_m`, `L_parasitic_rt`
+
+Ignores:
+- AOI (`f_theta_AOI`)
+- air gaps and mesh scans
+
+### Bowtie
+Uses:
+- `f_crystal_length`, `f_n_crystal`, `f_RoC`, `f_wavelength`
+- `f_theta_AOI`
+- `mesh_short_axis`, `mesh_long_axis`
+
+### Linear
+Uses:
+- `f_crystal_length`, `f_n_crystal`, `f_RoC`, `f_wavelength`
+- `f_L_cav`
+
+### Triangle
+Uses:
+- `f_crystal_length`, `f_n_crystal`, `f_RoC`, `f_wavelength`
+- `mesh_triangle_width`, `mesh_triangle_height`
+
+### Hemilithic
+Uses:
+- `f_crystal_length`, `f_n_crystal`, `f_RoC`, `f_wavelength`
+- `f_L_air`
+
+---
+
+## Initial Geometry Plots
+
+At the beginning of the workflow, the code generates two plots:
+
+- **Stability map**
+- **Waist map**
+
+These plots are used to:
+
+- identify stable regions of the cavity
+- evaluate mode size inside the crystal
+- guide the selection of a working point
+
+They are not final results, but a **design tool** to choose a valid cavity configuration.
+
+---
+
+## Choosing `single_point_parameters`
+
+After inspecting the geometry plots, a specific cavity configuration must be selected for detailed evaluation.
+
+Workflow:
+
+1. Run the geometry scan (stability + waist plots)
+2. Identify a stable region
+3. Choose a physically meaningful point
+4. Insert it in `single_point_parameters`
+5. Rerun to compute derived quantities
+
+### Required Parameters by Geometry
+
+| Geometry | Required single-point keys |
+|----------|---------------------------|
+| bowtie | `single_point_RoC_m`, `bowtie_short_axis_m`, `bowtie_long_axis_m`, `bowtie_theta_AOI_rad` |
+| linear | `single_point_RoC_m`, `linear_cavity_length_m` |
+| triangle | `single_point_RoC_m`, `triangle_width_m`, `triangle_height_m` |
+| hemilithic | `single_point_RoC_m`, `hemilithic_air_gap_m` |
+| monolithic | `single_point_RoC_m`, `monolithic_crystal_length_m` |
+
+Notes:
+
+- `single_point_RoC_m` is always required
+- only geometry-specific parameters are used; others are ignored
+
+This step defines the **actual cavity configuration** used for all downstream calculations.
 
 ## Resonant Loss Model
 

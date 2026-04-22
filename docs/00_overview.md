@@ -1,37 +1,46 @@
 # 00 — Overview
 
-This documentation is split into two layers:
+This documentation describes the structure and usage of the QPIT-SQZsim simulator, a pipeline for modeling optical parametric oscillators:
 
-- conceptual docs for the overall pipeline and interfaces
-- per-layer docs for the cavity, crystal, and OPO modules
+cavity → crystal → OPO
 
-Top-level files explain the project conceptually. `docs/modules/` contains layer-specific technical documentation.
+Start from this overview and follow the recommended reading order below.
 
-## Documentation order
+## Documentation Structure
 
-1. Overview -> `docs/00_overview.md`
-2. Architecture -> `docs/01_architecture.md`
-3. Workflow -> `docs/02_workflow.md`
-4. Physics -> `docs/03_physics.md`
-5. Outputs -> `docs/04_outputs.md`
+The documentation is organized into two parts:
 
-Module-specific documentation:
+- **Conceptual docs**: explain the overall pipeline and interfaces  
+- **Module docs**: describe each layer in detail (cavity, crystal, OPO)
 
-- Cavity -> `docs/modules/cavity.md`
-- Crystal -> `docs/modules/crystal.md`
-- OPO -> `docs/modules/opo.md`
+Top-level files provide the conceptual view.  
+`docs/modules/` contains layer-specific technical documentation.
+
+## Recommended Reading Order
+
+Follow this order to understand the project:
+
+1. Overview — overall structure  
+2. Architecture — layer responsibilities  
+3. Workflow — how to run the pipeline  
+4. Physics — physical model  
+5. Outputs — JSON interface  
 
 ## Conceptual Docs
 
-- [01_architecture.md](01_architecture.md): project structure, layer boundaries, and the cavity -> crystal -> OPO data flow
-- [02_workflow.md](02_workflow.md): execution order, rerun conditions, and how the staged workflow is used in practice
-- [03_physics.md](03_physics.md): high-level physical model, including cavity losses, phase matching, double resonance, and the current OPO scope
-- [04_outputs.md](04_outputs.md): JSON structure and downstream-facing result interfaces
+- [01_architecture.md](01_architecture.md): project structure, layer boundaries, and the cavity → crystal → OPO data flow  
+- [02_workflow.md](02_workflow.md): execution order, rerun conditions, and how the staged workflow is used in practice  
+- [03_physics.md](03_physics.md): high-level physical model, including cavity losses, phase matching, double resonance, and the current OPO scope  
+- [04_outputs.md](04_outputs.md): JSON structure and downstream-facing result interfaces  
 
-## Per-Layer Docs
+## Module Docs
 
-- [cavity.md](modules/cavity.md): cavity-layer inputs, supported geometries, exported loss quantities, and produced outputs
-- [crystal.md](modules/crystal.md): crystal-layer operating-point logic, scans, `selected_operating_point`, and `active_for_opo`
-- [opo.md](modules/opo.md): OPO-layer inputs, use of `active_for_opo`, operating-point model, and generated plots
+- [cavity.md](modules/cavity.md): cavity-layer inputs, supported geometries, loss model, and exported quantities  
+- [crystal.md](modules/crystal.md): operating-point logic, scans, and `active_for_opo`  
+- [opo.md](modules/opo.md): OPO model, use of `active_for_opo`, and generated outputs  
 
-Use the conceptual docs to understand the pipeline first, then the per-layer docs when working on a specific module.
+## How to Use These Docs
+
+Start with the conceptual docs to understand the full pipeline.
+
+Then use the module-specific docs when working on a particular layer or modifying the code.

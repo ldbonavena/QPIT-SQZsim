@@ -69,6 +69,32 @@ The main output is a temperature scan containing quantities such as:
 
 This defines the phase-matching operating point.
 
+## Initial Configuration
+
+The crystal workflow is driven mainly by:
+
+- wavelength triplet (`WAVELENGTH_P_M`, `WAVELENGTH_S_M`, `WAVELENGTH_I_M`)
+- crystal material model (`CRYSTAL_MODEL`)
+- phase-matching type (`PHASE_MATCHING_TYPE`)
+- phase-matching mode (`PHASE_MATCHING_MODE`)
+- temperature scan range (`T_MIN_K`, `T_MAX_K`, `N_T`)
+- optional double-resonance scan ranges
+
+These should be chosen consistently with the intended physical system before interpreting any crystal results.
+
+### Typical Use Cases
+
+- **Phase-matching study**
+  - choose wavelengths and crystal model
+  - set a broad temperature scan
+  - use `OPERATING_POINT_MODE = "phase_matching"`
+
+- **Double-resonance study**
+  - start from a cavity geometry that is already reasonable
+  - enable the double-resonance scan
+  - use `OPERATING_POINT_MODE = "double_resonance"`
+  - expect possible iteration with the cavity layer if the selected crystal length changes
+
 ## Double Resonance
 
 For polarization non-degenerate cases, especially Type II, signal and idler must both satisfy cavity resonance conditions.
@@ -99,6 +125,21 @@ Typical outputs include:
 - residual wrapped phase mismatch
 - double-resonance status
 
+## Reading the Crystal Diagnostics
+
+The crystal layer usually produces two kinds of information:
+
+- **single-point diagnostics** evaluated at one operating point
+- **scan diagnostics** used to search for a better operating point
+
+Typical interpretation:
+
+- the phase-matching scan tells you where nonlinear conversion is strongest
+- the double-resonance scan tells you where signal and idler are simultaneously resonant
+- these are different objectives and may point to different temperatures or crystal lengths
+
+The selected operating point determines which one is propagated downstream.
+
 ## Operating-Point Logic
 
 The active operating point is selected via:
@@ -120,6 +161,20 @@ The selected point is exported as:
 - `results.selected_operating_point_mode`
 - `results.selected_operating_point`
 
+## Choosing `OPERATING_POINT_MODE`
+
+Use:
+
+- `phase_matching` when the main goal is to maximize nonlinear interaction strength
+- `double_resonance` when the main goal is to enforce cavity resonance for signal and idler
+
+Practical rule:
+
+- start with `phase_matching` to identify a physically valid crystal configuration
+- use `double_resonance` when studying Type II operation or when cavity resonance matching is critical
+
+If `double_resonance` selects a crystal length different from the current cavity configuration, the cavity must be rerun before the OPO stage.
+
 ## Boyd–Kleinman Analysis
 
 The crystal layer evaluates the spatial overlap efficiency using a Boyd–Kleinman description.
@@ -138,6 +193,20 @@ Outputs include:
 - a comparison between the actual and optimal focusing condition
 
 This is the main spatial-overlap diagnostic used by the crystal layer.
+
+## How to Use the Crystal Plots
+
+The crystal plots are diagnostic tools, not independent results.
+
+Typical usage:
+
+1. Inspect the phase-matching scan to locate the best temperature region
+2. Inspect the double-resonance scan (if enabled) to see whether resonance matching is achievable
+3. Inspect the BK plots to evaluate how good the spatial overlap is at the selected operating point
+4. Choose or confirm `OPERATING_POINT_MODE`
+5. If necessary, go back to the cavity layer and update crystal length or geometry
+
+This makes the crystal layer the bridge between cavity design and OPO simulation.
 
 ## `active_for_opo`
 

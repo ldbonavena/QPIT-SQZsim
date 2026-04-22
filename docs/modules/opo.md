@@ -42,6 +42,24 @@ The OPO layer performs the following steps:
 7. Build structured output
 8. Generate plots and save results
 
+## Initial Configuration
+
+The OPO workflow is driven mainly by the parameters defined in `opo_main.py`.
+
+The most important ones are:
+
+- `pump_power_W`
+- `threshold_power_W`
+- `signal_wavelength_m`
+- `pump_wavelength_m`
+- `analysis_sideband_Hz`
+- `analysis_span_Hz`
+- `n_analysis_points`
+- `detection_efficiency`
+- `lo_phase_rad`
+
+These define the operating regime, the analysis frequency range, and the measurement conditions.
+
 ## Inputs from Cavity and Crystal
 
 The OPO layer consumes:
@@ -66,6 +84,8 @@ The OPO layer consumes:
 
 The `active_for_opo` block is the **single source of truth** for the crystal state.
 
+The OPO layer does not choose the operating point itself. It uses the point already selected by the crystal layer.
+
 ## Consistency Check
 
 The OPO layer enforces consistency between:
@@ -73,12 +93,12 @@ The OPO layer enforces consistency between:
 - cavity crystal length
 - crystal selected operating-point length
 
-If these differ (e.g. after a double-resonance scan):
+If these differ (for example after a double-resonance scan):
 
 - the simulation stops
-- the user must rerun the cavity with the updated crystal length
+- the cavity must be rerun with the updated crystal length
 
-This prevents mixing incompatible geometry and nonlinear calculations.
+This prevents mixing incompatible cavity geometry and crystal operating conditions.
 
 ## OPO Operating-Point Model
 
@@ -123,7 +143,6 @@ The squeezing calculation:
 - computes spectral densities for X and P quadratures
 - identifies squeezing and anti-squeezing
 - includes:
-
   - escape efficiency (intracavity → output)
   - detection efficiency (measurement loss)
 
@@ -136,6 +155,27 @@ Outputs include:
 
 All spectra are normalized to the high-frequency shot-noise limit.
 
+## Reading the OPO Summary
+
+The OPO summary provides the main operating-point quantities.
+
+Typical interpretation:
+
+- `pump parameter sigma`  
+  normalized pump strength relative to threshold
+
+- `effective threshold power`  
+  threshold estimate including the current cavity/crystal operating conditions
+
+- `below_threshold`  
+  whether the model is being used in its intended regime
+
+- `crystal operating point mode`  
+  whether the crystal layer selected `phase_matching` or `double_resonance`
+
+- `crystal active temperature` and `crystal active length`  
+  the actual crystal state used by the OPO model
+
 ## Resonance Diagnostic
 
 The OPO layer provides a visualization of longitudinal resonances:
@@ -144,11 +184,22 @@ The OPO layer provides a visualization of longitudinal resonances:
 - cavity linewidth
 - gain envelope
 
-This is based on:
-
-- `polarization_resonance` from the crystal layer
+This is based on the crystal-side polarization-resonance diagnostic.
 
 It is a **diagnostic visualization**, not a full transfer-function model.
+
+## How to Use the OPO Plots
+
+The OPO plots are diagnostic and interpretive tools.
+
+Typical usage:
+
+1. Inspect the squeezing spectrum to evaluate the predicted noise reduction
+2. Inspect the measured quadrature trace to understand the effect of LO phase
+3. Inspect the resonance diagnostic to see whether signal and idler are close to simultaneous resonance
+4. Compare results for different crystal operating-point modes if needed
+
+The resonance plot is especially useful for checking whether a `double_resonance` operating point is being used consistently.
 
 ## Outputs
 
@@ -195,6 +246,7 @@ It is not:
 - cavity detuning rotates the squeezing quadrature
 - the selected crystal operating point directly affects the OPO performance
 - double-resonance operation requires cavity–crystal consistency
+- changing the crystal operating point does not automatically change cavity geometry
 
 For execution order, see [02_workflow.md](../02_workflow.md).  
 For architecture, see [01_architecture.md](../01_architecture.md).  

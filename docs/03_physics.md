@@ -1,71 +1,97 @@
-# 03 — Physics
+# 02 — Workflow
 
-This project uses a compact layered model. The focus is on a clear operating-point pipeline rather than a full general quantum-optics treatment.
+This section describes how to run the simulator and how data flows through the pipeline.
 
-## Cavity Losses
+The simulation is executed in three sequential steps:
 
-The cavity layer uses a reflectivity-based resonant loss model.
+cavity → crystal → OPO
 
-Primary inputs:
+Each step writes a JSON file that is used as input by the next one.
 
-- `reflectivity_input_resonant`
-- `reflectivity_output_resonant`
-- `alpha_resonant_per_m`
-- `parasitic_roundtrip_loss`
+## 1. Cavity
 
-From these, the cavity layer derives:
+`src/cavity/cavity_main.py` defines the cavity configuration and computes:
 
-- output coupling transmission
-- internal round-trip loss
-- `kappa_ext_Hz`
-- `kappa_loss_Hz`
-- `kappa_total_Hz`
+- geometry-dependent mode properties
+- beam waist in the crystal
+- free spectral range (FSR)
+- reflectivity-based loss quantities
+- `kappa_ext_Hz`, `kappa_loss_Hz`, `kappa_total_Hz`
+- `escape_efficiency`
 
-with
+The output JSON defines the **optical system and loss model** used by all downstream layers.
 
-- `kappa_total_Hz = kappa_ext_Hz + kappa_loss_Hz`
+## 2. Crystal
 
-The escape efficiency is:
+`src/crystal/crystal_main.py` loads the cavity JSON and then:
 
-- `escape_efficiency = kappa_ext_Hz / kappa_total_Hz`
+- computes the phase-matching scan
+- evaluates the phase-matching resonance diagnostic
+- optionally computes the double-resonance scan
+- builds candidate operating points
+- selects the active operating point using `OPERATING_POINT_MODE`
+- evaluates all crystal quantities at that selected point
+- exports `results.active_for_opo`
 
-This is an intracavity/output-coupling quantity. It is distinct from downstream propagation loss or detector efficiency.
+The current operating-point modes are:
 
-## Crystal Physics
+- `phase_matching`
+- `double_resonance`
 
-The crystal layer models:
+The output defines the **nonlinear operating point** used by the OPO layer.
 
-- temperature-dependent refractive indices
-- quasi-phase matching
-- phase-matching scans versus temperature
-- polarization-resolved cavity resonance diagnostics
-- double-resonance scans
-- focused-beam mode matching
-- Boyd-Kleinman focusing analysis
+## 3. OPO
 
-Two operating-point ideas are separated:
+`src/opo/opo_main.py` loads cavity and crystal outputs and then:
 
-- phase matching: optimize nonlinear conversion
-- double resonance: align the resonant condition for the signal and idler fields
+- validates consistency between cavity geometry and crystal operating point
+- builds the below-threshold OPO operating-point model
+- constructs the Langevin model
+- computes squeezing spectra
+- generates plots
 
-`delta_phi_wrapped_rad` is the signal-idler round-trip phase mismatch reduced to `[-pi, pi]`. Small absolute value means the two fields are close to double resonance.
+The output contains the **final physical prediction** of the simulation.
 
-## OPO Model
+## Data Flow
 
-The OPO layer is currently a compact degenerate below-threshold model.
+The workflow enforces a strict data flow:
 
-It includes:
+- `cavity` → defines geometry and losses  
+- `crystal` → defines the operating point  
+- `opo` → computes quantum noise and squeezing  
 
-- cavity loss and escape quantities from the cavity layer
-- crystal-derived nonlinear overlap and effective coupling
-- a minimal 2x2 quadrature-basis Langevin model
-- frequency-domain squeezing and anti-squeezing spectra
+Each layer consumes the output of the previous one and does not modify upstream quantities.
 
-It does not include:
+## Why the Order Matters
 
-- full non-degenerate dynamics
-- multimode dynamics
-- pump depletion
-- a full first-principles threshold derivation
+The layers are not independent:
 
-For layer-specific implementation details, see [cavity.md](modules/cavity.md), [crystal.md](modules/crystal.md), and [opo.md](modules/opo.md).
+- the crystal layer depends on the cavity beam waist and loss model  
+- the OPO layer depends on both cavity losses and the crystal operating point  
+
+Running the steps out of order leads to inconsistent results.
+
+## When to Rerun Cavity
+
+You must rerun `cavity_main.py` when the selected crystal operating point changes the crystal length.
+
+Typical case:
+
+- `OPERATING_POINT_MODE = "double_resonance"`
+- the selected point has a different `crystal_length_m` than the one used in the cavity
+
+In that case, rerun:
+
+1. `python src/cavity/cavity_main.py`
+2. `python src/crystal/crystal_main.py`
+3. `python src/opo/opo_main.py`
+
+This ensures that cavity geometry and crystal operating point remain consistent.
+
+---
+
+For module-specific details, see:
+
+- [cavity.md](modules/cavity.md)
+- [crystal.md](modules/crystal.md)
+- [opo.md](modules/opo.md)
