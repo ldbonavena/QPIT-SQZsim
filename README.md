@@ -88,17 +88,23 @@ Each step depends on the outputs produced by the previous one.
 
 Main modules:
 
-- `src/cavity` — cavity geometry, mode properties, and loss model
-- `src/crystal` — phase matching, double resonance, and operating-point selection
-- `src/opo` — OPO model, Langevin equations, and squeezing spectra
+- `src/cavity` — cavity geometry, mode properties, resonant loss model, and derived cavity quantities
+- `src/crystal` — phase matching, double resonance, operating-point selection, and crystal → OPO handoff
+- `src/opo` — OPO operating-point model, Langevin equations, squeezing spectra, and diagnostic plots
+- `src/common` — shared utilities, constants, and results-path helpers used across the pipeline
 
-Cavity module files:
+Representative files:
 
-- `cavity_main.py` — cavity entry point and parameter selection
-- `cavity_workflow.py` — high-level cavity workflow and JSON export
-- `cavity_abcd.py` — unified ABCD optics module with generic ABCD utilities, validation helpers, and cavity round-trip builders
-- `cavity_analysis.py` — mode extraction and derived cavity quantities
-- `cavity_plotter.py` — stability and waist plots
+- `src/cavity/cavity_main.py` — cavity entry point and geometry/loss configuration
+- `src/crystal/crystal_main.py` — crystal entry point and operating-point selection
+- `src/opo/opo_main.py` — OPO entry point and final simulation stage
+- `src/common/constants.py` — shared physical and numerical constants
+- `src/common/results_paths.py` — common helpers for structured output paths
+
+Documentation and outputs:
+
+- `docs/` — high-level and module-specific documentation
+- `results/` — generated JSON outputs and plots for each simulation stage
 
 For detailed concepts and definitions, see the documentation in the `docs/` directory.
 
