@@ -66,12 +66,12 @@ def _high_frequency_reference(values: np.ndarray) -> float:
 
 def build_analysis_frequency_grid(parameters: OPOParameters) -> np.ndarray:
     """Build the analysis-frequency axis used for spectrum calculations."""
-    f_min, f_max = parameters.analysis_span_Hz
+    frequency_min_hz, frequency_max_hz = parameters.analysis_span_Hz
     if parameters.n_analysis_points < 2:
         raise ValueError("n_analysis_points must be at least 2")
-    if f_min < 0.0 or f_max <= f_min:
-        raise ValueError("analysis_span_Hz must satisfy 0 <= f_min < f_max")
-    return np.linspace(f_min, f_max, parameters.n_analysis_points, dtype=float)
+    if frequency_min_hz < 0.0 or frequency_max_hz <= frequency_min_hz:
+        raise ValueError("analysis_span_Hz must satisfy 0 <= frequency_min_hz < frequency_max_hz")
+    return np.linspace(frequency_min_hz, frequency_max_hz, parameters.n_analysis_points, dtype=float)
 
 
 def compute_squeezing_spectra(

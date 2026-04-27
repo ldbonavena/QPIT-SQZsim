@@ -52,9 +52,31 @@ The exact geometry inputs depend on the selected geometry, but they include quan
 
 - crystal length
 - crystal refractive index
-- mirror or facet radius of curvature
+- two mirror or facet radii of curvature
 - cavity lengths, gaps, widths, or heights depending on geometry
 
+The preferred curvature inputs are:
+
+- `ROC_1_M`
+- `ROC_2_M`
+
+Each radius must be positive and finite, or `np.inf` for a planar mirror/facet.
+The public configuration always uses radii. Internally, the ABCD estimators
+convert each radius to curvature (`1 / R`) and map `np.inf` to exactly zero
+curvature, so planar surfaces do not enter the symbolic model as infinite
+radii.
+
+Geometry-specific interpretation:
+
+| Geometry | `ROC_1_M` | `ROC_2_M` |
+|----------|-----------|-----------|
+| `bowtie` | first curved mirror adjacent to the crystal | second curved mirror adjacent to the crystal |
+| `linear` | first cavity mirror | second cavity mirror |
+| `triangle` | first relevant curved mirror | second relevant curved mirror |
+| `hemilithic` | external mirror | curved crystal surface |
+| `monolithic` | first crystal facet curvature | second crystal facet curvature |
+
+For `hemilithic` and `monolithic`, `np.inf` can be used for a flat crystal surface. This covers planar/curved and flat-flat limits where the ABCD model is mathematically meaningful.
 
 These inputs are defined in `cavity_main.py` and interpreted in `cavity_workflow.py` and the geometry-specific ABCD builders in `cavity_abcd.py`.
 
@@ -64,37 +86,37 @@ The relevant input parameters depend on the selected geometry.
 
 ### Monolithic
 Uses:
-- `f_crystal_length`
-- `f_n_crystal`
-- `f_RoC`
-- `f_wavelength`
-- `R1_resonant`, `R2_resonant`
-- `alpha_resonant_per_m`, `L_parasitic_rt`
+- `CRYSTAL_LENGTH_M`
+- `N_CRYSTAL`
+- `ROC_1_M`, `ROC_2_M`
+- `WAVELENGTH_M`
+- `R1_RESONANT`, `R2_RESONANT`
+- `ALPHA_RESONANT_PER_M`, `L_PARASITIC_RT`
 
 Ignores:
-- AOI (`f_theta_AOI`)
+- AOI (`THETA_AOI_RAD`)
 - air gaps and mesh scans
 
 ### Bowtie
 Uses:
-- `f_crystal_length`, `f_n_crystal`, `f_RoC`, `f_wavelength`
-- `f_theta_AOI`
+- `CRYSTAL_LENGTH_M`, `N_CRYSTAL`, `ROC_1_M`, `ROC_2_M`, `WAVELENGTH_M`
+- `THETA_AOI_RAD`
 - `mesh_short_axis`, `mesh_long_axis`
 
 ### Linear
 Uses:
-- `f_crystal_length`, `f_n_crystal`, `f_RoC`, `f_wavelength`
-- `f_L_cav`
+- `CRYSTAL_LENGTH_M`, `N_CRYSTAL`, `ROC_1_M`, `ROC_2_M`, `WAVELENGTH_M`
+- `L_CAV_M`
 
 ### Triangle
 Uses:
-- `f_crystal_length`, `f_n_crystal`, `f_RoC`, `f_wavelength`
-- `mesh_triangle_width`, `mesh_triangle_height`
+- `CRYSTAL_LENGTH_M`, `N_CRYSTAL`, `ROC_1_M`, `ROC_2_M`, `WAVELENGTH_M`
+- `MESH_TRIANGLE_WIDTH_M`, `MESH_TRIANGLE_HEIGHT_M`
 
 ### Hemilithic
 Uses:
-- `f_crystal_length`, `f_n_crystal`, `f_RoC`, `f_wavelength`
-- `f_L_air`
+- `CRYSTAL_LENGTH_M`, `N_CRYSTAL`, `ROC_1_M`, `ROC_2_M`, `WAVELENGTH_M`
+- `L_AIR_M`
 
 ---
 
@@ -131,15 +153,15 @@ Workflow:
 
 | Geometry | Required single-point keys |
 |----------|---------------------------|
-| bowtie | `single_point_RoC_m`, `bowtie_short_axis_m`, `bowtie_long_axis_m`, `bowtie_theta_AOI_rad` |
-| linear | `single_point_RoC_m`, `linear_cavity_length_m` |
-| triangle | `single_point_RoC_m`, `triangle_width_m`, `triangle_height_m` |
-| hemilithic | `single_point_RoC_m`, `hemilithic_air_gap_m` |
-| monolithic | `single_point_RoC_m`, `monolithic_crystal_length_m` |
+| bowtie | `ROC_1_M`, `ROC_2_M`, `BOWTIE_SHORT_AXIS_M`, `BOWTIE_LONG_AXIS_M`, `BOWTIE_THETA_AOI_RAD` |
+| linear | `ROC_1_M`, `ROC_2_M`, `LINEAR_CAVITY_LENGTH_M` |
+| triangle | `ROC_1_M`, `ROC_2_M`, `TRIANGLE_WIDTH_M`, `TRIANGLE_HEIGHT_M` |
+| hemilithic | `ROC_1_M`, `ROC_2_M`, `HEMILITHIC_AIR_GAP_M` |
+| monolithic | `ROC_1_M`, `ROC_2_M`, `MONOLITHIC_CRYSTAL_LENGTH_M` |
 
 Notes:
 
-- `single_point_RoC_m` is always required
+- `ROC_1_M` and `ROC_2_M` override the global `ROC_1_M` and `ROC_2_M`
 - only geometry-specific parameters are used; others are ignored
 
 This step defines the **actual cavity configuration** used for all downstream calculations.
@@ -150,10 +172,10 @@ The cavity is described using a physically explicit resonant-field loss model.
 
 The main inputs are:
 
-- `R1_resonant`: reflectivity of the non-output mirror or facet
-- `R2_resonant`: reflectivity of the output coupler
-- `alpha_resonant_per_m`: distributed resonant-field loss coefficient in the crystal
-- `L_parasitic_rt`: additional parasitic round-trip loss
+- `R1_RESONANT`: reflectivity of the non-output mirror or facet
+- `R2_RESONANT`: reflectivity of the output coupler
+- `ALPHA_RESONANT_PER_M`: distributed resonant-field loss coefficient in the crystal
+- `L_PARASITIC_RT`: additional parasitic round-trip loss
 
 From these inputs, the cavity layer derives:
 

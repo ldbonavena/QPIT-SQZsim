@@ -9,47 +9,67 @@ from common.constants import PI
 from cavity_analysis import beam_waist_from_q
 
 
+def _resolve_plot_radii(radius_of_curvature=None, radius_of_curvature_1=None, radius_of_curvature_2=None):
+    """Resolve explicit plot radii with legacy single-radius fallback."""
+    r1 = radius_of_curvature_1 if radius_of_curvature_1 is not None else radius_of_curvature
+    r2 = radius_of_curvature_2 if radius_of_curvature_2 is not None else radius_of_curvature
+    if r1 is None or r2 is None:
+        raise ValueError("plot requires radius_of_curvature_1/radius_of_curvature_2 or radius_of_curvature")
+    return float(r1), float(r2)
+
+
+def _radius_label(radius_m):
+    if np.isinf(radius_m):
+        return "inf"
+    return f"{radius_m * 1e3:.1f} mm"
+
+
+def _fixed_radius_title(base_title, radius_1, radius_2):
+    return f"{base_title} (RoC1={_radius_label(radius_1)}, RoC2={_radius_label(radius_2)})"
+
+
 def print_geometry_ascii(geometry: str) -> None:
     """Print an ASCII sketch of the selected cavity geometry."""
     if geometry == "linear":
         print(
-            "      T_in       T_out\n"
-            "   -----(--[###]--)----->\n"
-            "         <- - - -> d"
+            "           RoC_1      RoC_2\n"
+            "    ---------(--[###]--)-------------(\n"
+            "              <- - - -> d"
         )
     elif geometry == "triangle":
         print(
-            "              __ M3,R         ___\n"
+            "              __               ___\n"
             "              /\\               |\n"
             "             /  \\              |\n"
             "            /    \\             | h\n"
             "           /      \\            |\n"
-            "     T_in / [###]  \\ T_out     |\n"
-            "    -----/----------\\----->   _|_\n"
+            "    RoC_1 /        \\  RoC_2    |\n"
+            "    -----/--[###]---\\----->   _|_\n"
             "         <- - - - - > w"
         )
     elif geometry == "bowtie":
         print(
             "          <- - - -> d1\n"
-            "    M3,R /--[###]--\\ M4,R\n"
+            "      RoC_1        RoC_2 \n"
+            "  ----->(---[###]---)----->\n"
             "          \\       /\n"
             "            \\   /\n"
             "              X\n"
             "             / \\\n"
             "           /     \\\n"
-            "    T_in /         \\ T_out\n"
-            "   ----/-------------\\----->\n"
+            "         /         \\\n"
+            "       /-------------\\\n"
             "       <- - - - - - -> d2"
         )
     elif geometry == "hemilithic":
         print(
-            "   T_out                HR crystal face\n"
+            "       RoC_1             RoC_2\n"
             "   -----(---- air ----[###)----->\n"
             "         <-- L_air -->"
         )
     elif geometry == "monolithic":
         print(
-            "   coated planar face      curved coated face\n"
+            "      RoC_1           RoC_2\n"
             "   -----[###############)----->\n"
             "         <-- crystal -->"
         )
@@ -112,6 +132,8 @@ class CavityPlotter:
         crystal_length,
         n_crystal,
         radius_of_curvature=None,
+        radius_of_curvature_1=None,
+        radius_of_curvature_2=None,
         incidence_angle=None,
         mesh_x=None,
         mesh_y=None,
@@ -121,56 +143,57 @@ class CavityPlotter:
     ):
         """Create a stability map figure for the configured geometry."""
         fig = plt.figure()
+        radius_1, radius_2 = _resolve_plot_radii(radius_of_curvature, radius_of_curvature_1, radius_of_curvature_2)
 
         if self.geometry == "bowtie":
-            if mesh_x is None or mesh_y is None or radius_of_curvature is None or incidence_angle is None:
-                raise ValueError("bowtie stability plot requires mesh_x, mesh_y, radius_of_curvature, and incidence_angle")
+            if mesh_x is None or mesh_y is None or incidence_angle is None:
+                raise ValueError("bowtie stability plot requires mesh_x, mesh_y, radii, and incidence_angle")
             stable_map = np.abs(
-                estimate_m_factor_s(mesh_y, mesh_x, incidence_angle, crystal_length, radius_of_curvature, n_crystal)
+                estimate_m_factor_s(mesh_y, mesh_x, incidence_angle, crystal_length, radius_1, radius_2, n_crystal)
             ) < 1
             plt.contourf(mesh_x * 1e3, mesh_y * 1e3, stable_map)
             plt.xlabel(x_label or "Short axis [mm]")
             plt.ylabel(y_label or "Long axis [mm]")
-            plt.title(title or "Bow-tie stability (|m|<1)")
+            plt.title(title or _fixed_radius_title("Bow-tie stability (|m|<1)", radius_1, radius_2))
 
         elif self.geometry == "linear":
             cavity_scan = np.arange(crystal_length + 0.5e-3, 120e-3, 0.5e-3)
-            roc_scan = np.arange(10e-3, 150e-3, 0.5e-3)
-            mesh_cavity, mesh_roc = np.meshgrid(cavity_scan, roc_scan)
-            stable_map = np.abs(estimate_m_factor_s(mesh_roc, mesh_cavity, crystal_length, n_crystal)) < 1
-            plt.contourf(mesh_cavity * 1e3, mesh_roc * 1e3, stable_map)
+            y_scan = np.array([0.0, 1.0])
+            mesh_cavity, mesh_y_dummy = np.meshgrid(cavity_scan, y_scan)
+            stable_map = np.abs(estimate_m_factor_s(radius_1, radius_2, mesh_cavity, crystal_length, n_crystal)) < 1
+            plt.contourf(mesh_cavity * 1e3, mesh_y_dummy, stable_map)
             plt.xlabel(x_label or "Cavity length [mm]")
-            plt.ylabel(y_label or "RoC [mm]")
-            plt.title(title or "Linear cavity stability (|m|<1)")
+            plt.ylabel(y_label or "fixed RoC pair")
+            plt.title(title or _fixed_radius_title("Linear cavity stability (|m|<1)", radius_1, radius_2))
 
         elif self.geometry == "triangle":
-            if mesh_x is None or mesh_y is None or radius_of_curvature is None:
-                raise ValueError("triangle stability plot requires mesh_x, mesh_y, and radius_of_curvature")
-            stable_map = np.abs(estimate_m_factor_s(mesh_x, mesh_y, crystal_length, radius_of_curvature, n_crystal)) < 1
+            if mesh_x is None or mesh_y is None:
+                raise ValueError("triangle stability plot requires mesh_x, mesh_y, and radii")
+            stable_map = np.abs(estimate_m_factor_s(mesh_x, mesh_y, crystal_length, radius_1, radius_2, n_crystal)) < 1
             plt.contourf(mesh_x * 1e3, mesh_y * 1e3, stable_map)
             plt.xlabel(x_label or "Triangle width [mm]")
             plt.ylabel(y_label or "Triangle height [mm]")
-            plt.title(title or "Triangle cavity stability (|m|<1)")
+            plt.title(title or _fixed_radius_title("Triangle cavity stability (|m|<1)", radius_1, radius_2))
 
         elif self.geometry == "hemilithic":
             air_scan = np.arange(0.5e-3, 120e-3, 0.5e-3)
-            roc_scan = np.arange(10e-3, 150e-3, 0.5e-3)
-            mesh_air, mesh_roc = np.meshgrid(air_scan, roc_scan)
-            stable_map = np.abs(estimate_m_factor_s(mesh_roc, mesh_air, crystal_length, n_crystal)) < 1
-            plt.contourf(mesh_air * 1e3, mesh_roc * 1e3, stable_map)
+            y_scan = np.array([0.0, 1.0])
+            mesh_air, mesh_y_dummy = np.meshgrid(air_scan, y_scan)
+            stable_map = np.abs(estimate_m_factor_s(radius_1, radius_2, mesh_air, crystal_length, n_crystal)) < 1
+            plt.contourf(mesh_air * 1e3, mesh_y_dummy, stable_map)
             plt.xlabel(x_label or "Air gap [mm]")
-            plt.ylabel(y_label or "RoC [mm]")
-            plt.title(title or "Hemilithic cavity stability (|m|<1)")
+            plt.ylabel(y_label or "fixed RoC pair")
+            plt.title(title or _fixed_radius_title("Hemilithic cavity stability (|m|<1)", radius_1, radius_2))
 
         elif self.geometry == "monolithic":
             crystal_scan = np.arange(0.5e-3, 40e-3, 0.25e-3)
-            roc_scan = np.arange(2e-3, 150e-3, 0.5e-3)
-            mesh_crystal, mesh_roc = np.meshgrid(crystal_scan, roc_scan)
-            stable_map = np.abs(estimate_m_factor_s(mesh_roc, mesh_crystal, n_crystal)) < 1
-            plt.contourf(mesh_crystal * 1e3, mesh_roc * 1e3, stable_map)
+            y_scan = np.array([0.0, 1.0])
+            mesh_crystal, mesh_y_dummy = np.meshgrid(crystal_scan, y_scan)
+            stable_map = np.abs(estimate_m_factor_s(radius_1, radius_2, mesh_crystal, n_crystal)) < 1
+            plt.contourf(mesh_crystal * 1e3, mesh_y_dummy, stable_map)
             plt.xlabel(x_label or "Crystal length [mm]")
-            plt.ylabel(y_label or "Curved facet RoC [mm]")
-            plt.title(title or "Monolithic cavity stability (|m|<1)")
+            plt.ylabel(y_label or "fixed RoC pair")
+            plt.title(title or _fixed_radius_title("Monolithic cavity stability (|m|<1)", radius_1, radius_2))
 
         else:
             raise ValueError("geometry must be 'bowtie', 'linear', 'triangle', 'hemilithic', or 'monolithic'")
@@ -186,6 +209,8 @@ class CavityPlotter:
         n_crystal,
         wavelength,
         radius_of_curvature=None,
+        radius_of_curvature_1=None,
+        radius_of_curvature_2=None,
         incidence_angle=None,
         mesh_x=None,
         mesh_y=None,
@@ -195,59 +220,60 @@ class CavityPlotter:
     ):
         """Create a beam-waist map figure for the configured geometry."""
         fig = plt.figure()
+        radius_1, radius_2 = _resolve_plot_radii(radius_of_curvature, radius_of_curvature_1, radius_of_curvature_2)
 
         if self.geometry == "bowtie":
-            if mesh_x is None or mesh_y is None or radius_of_curvature is None or incidence_angle is None:
-                raise ValueError("bowtie waist plot requires mesh_x, mesh_y, radius_of_curvature, and incidence_angle")
-            q = estimate_q_sagittal(mesh_y, mesh_x, incidence_angle, crystal_length, radius_of_curvature, n_crystal)
+            if mesh_x is None or mesh_y is None or incidence_angle is None:
+                raise ValueError("bowtie waist plot requires mesh_x, mesh_y, radii, and incidence_angle")
+            q = estimate_q_sagittal(mesh_y, mesh_x, incidence_angle, crystal_length, radius_1, radius_2, n_crystal)
             waist_um = beam_waist_from_q(q, wavelength, refractive_index=n_crystal) * 1e6
             plt.contourf(mesh_x * 1e3, mesh_y * 1e3, waist_um)
             plt.xlabel(x_label or "Short axis [mm]")
             plt.ylabel(y_label or "Long axis [mm]")
-            plt.title(title or "Bow-tie waist map")
+            plt.title(title or _fixed_radius_title("Bow-tie waist map", radius_1, radius_2))
 
         elif self.geometry == "linear":
             cavity_scan = np.arange(crystal_length + 0.5e-3, 120e-3, 0.5e-3)
-            roc_scan = np.arange(10e-3, 150e-3, 0.5e-3)
-            mesh_cavity, mesh_roc = np.meshgrid(cavity_scan, roc_scan)
-            q = estimate_q_sagittal(mesh_roc, mesh_cavity, crystal_length, n_crystal)
+            y_scan = np.array([0.0, 1.0])
+            mesh_cavity, mesh_y_dummy = np.meshgrid(cavity_scan, y_scan)
+            q = estimate_q_sagittal(radius_1, radius_2, mesh_cavity, crystal_length, n_crystal)
             waist_um = beam_waist_from_q(q, wavelength, refractive_index=n_crystal) * 1e6
-            plt.contourf(mesh_cavity * 1e3, mesh_roc * 1e3, waist_um)
+            plt.contourf(mesh_cavity * 1e3, mesh_y_dummy, waist_um)
             plt.xlabel(x_label or "Cavity length [mm]")
-            plt.ylabel(y_label or "RoC [mm]")
-            plt.title(title or "Linear cavity waist map")
+            plt.ylabel(y_label or "fixed RoC pair")
+            plt.title(title or _fixed_radius_title("Linear cavity waist map", radius_1, radius_2))
 
         elif self.geometry == "triangle":
-            if mesh_x is None or mesh_y is None or radius_of_curvature is None:
-                raise ValueError("triangle waist plot requires mesh_x, mesh_y, and radius_of_curvature")
-            q = estimate_q_sagittal(mesh_x, mesh_y, crystal_length, radius_of_curvature, n_crystal)
+            if mesh_x is None or mesh_y is None:
+                raise ValueError("triangle waist plot requires mesh_x, mesh_y, and radii")
+            q = estimate_q_sagittal(mesh_x, mesh_y, crystal_length, radius_1, radius_2, n_crystal)
             waist_um = beam_waist_from_q(q, wavelength, refractive_index=n_crystal) * 1e6
             plt.contourf(mesh_x * 1e3, mesh_y * 1e3, waist_um)
             plt.xlabel(x_label or "Triangle width [mm]")
             plt.ylabel(y_label or "Triangle height [mm]")
-            plt.title(title or "Triangle cavity waist map")
+            plt.title(title or _fixed_radius_title("Triangle cavity waist map", radius_1, radius_2))
 
         elif self.geometry == "hemilithic":
             air_scan = np.arange(0.5e-3, 120e-3, 0.5e-3)
-            roc_scan = np.arange(10e-3, 150e-3, 0.5e-3)
-            mesh_air, mesh_roc = np.meshgrid(air_scan, roc_scan)
-            q = estimate_q_sagittal(mesh_roc, mesh_air, crystal_length, n_crystal)
+            y_scan = np.array([0.0, 1.0])
+            mesh_air, mesh_y_dummy = np.meshgrid(air_scan, y_scan)
+            q = estimate_q_sagittal(radius_1, radius_2, mesh_air, crystal_length, n_crystal)
             waist_um = beam_waist_from_q(q, wavelength, refractive_index=n_crystal) * 1e6
-            plt.contourf(mesh_air * 1e3, mesh_roc * 1e3, waist_um)
+            plt.contourf(mesh_air * 1e3, mesh_y_dummy, waist_um)
             plt.xlabel(x_label or "Air gap [mm]")
-            plt.ylabel(y_label or "RoC [mm]")
-            plt.title(title or "Hemilithic cavity waist map")
+            plt.ylabel(y_label or "fixed RoC pair")
+            plt.title(title or _fixed_radius_title("Hemilithic cavity waist map", radius_1, radius_2))
 
         elif self.geometry == "monolithic":
             crystal_scan = np.arange(0.5e-3, 40e-3, 0.25e-3)
-            roc_scan = np.arange(2e-3, 150e-3, 0.5e-3)
-            mesh_crystal, mesh_roc = np.meshgrid(crystal_scan, roc_scan)
-            q = estimate_q_sagittal(mesh_roc, mesh_crystal, n_crystal)
+            y_scan = np.array([0.0, 1.0])
+            mesh_crystal, mesh_y_dummy = np.meshgrid(crystal_scan, y_scan)
+            q = estimate_q_sagittal(radius_1, radius_2, mesh_crystal, n_crystal)
             waist_um = beam_waist_from_q(q, wavelength, refractive_index=n_crystal) * 1e6
-            plt.contourf(mesh_crystal * 1e3, mesh_roc * 1e3, waist_um)
+            plt.contourf(mesh_crystal * 1e3, mesh_y_dummy, waist_um)
             plt.xlabel(x_label or "Crystal length [mm]")
-            plt.ylabel(y_label or "Curved facet RoC [mm]")
-            plt.title(title or "Monolithic cavity waist map")
+            plt.ylabel(y_label or "fixed RoC pair")
+            plt.title(title or _fixed_radius_title("Monolithic cavity waist map", radius_1, radius_2))
 
         else:
             raise ValueError("geometry must be 'bowtie', 'linear', 'triangle', 'hemilithic', or 'monolithic'")

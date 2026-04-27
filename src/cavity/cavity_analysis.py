@@ -8,6 +8,7 @@ import sympy as sp
 from common.constants import PI, TWO_PI
 from cavity_abcd import CavityAbcdBuilder
 from cavity_abcd import Abcd
+from cavity_abcd import radius_to_curvature
 
 
 def cavity_stability(matrix):
@@ -48,55 +49,55 @@ def distributed_roundtrip_loss(alpha_per_m: float, roundtrip_propagation_length_
 def resolve_resonant_loss_model(parameters: dict, roundtrip_propagation_length_m: float) -> dict[str, float | str]:
     """Resolve one physically explicit resonant-loss model from new or legacy inputs.
 
-    New convention:
-    - ``R1_resonant``: non-output resonant mirror/facet reflectivity
-    - ``R2_resonant``: output-coupler reflectivity
+    Input convention:
+    - ``r1_resonant``: non-output resonant mirror/facet reflectivity
+    - ``r2_resonant``: output-coupler reflectivity
     - ``alpha_resonant_per_m``: distributed resonant power-loss coefficient
-    - ``L_parasitic_rt``: extra round-trip internal power loss
+    - ``l_parasitic_rt``: extra round-trip internal power loss
 
-    Legacy convention:
-    - ``f_T_ext``: output coupling transmission
-    - ``f_L_rt``: internal round-trip power loss
+    Alternative compact convention:
+    - ``t_ext``: output coupling transmission
+    - ``l_rt``: internal round-trip power loss
     """
     uses_new = any(
         key in parameters
-        for key in ("R1_resonant", "R2_resonant", "alpha_resonant_per_m", "L_parasitic_rt")
+        for key in ("r1_resonant", "r2_resonant", "alpha_resonant_per_m", "l_parasitic_rt")
     )
-    uses_legacy = any(key in parameters for key in ("f_T_ext", "f_L_rt"))
+    uses_legacy = any(key in parameters for key in ("t_ext", "l_rt"))
 
     if uses_new and uses_legacy:
         raise ValueError(
             "Mixed cavity loss conventions are not allowed. Use either the reflectivity-based "
-            "inputs (R1_resonant/R2_resonant/alpha_resonant_per_m/L_parasitic_rt) or the legacy "
-            "inputs (f_T_ext/f_L_rt), but not both."
+            "inputs (r1_resonant/r2_resonant/alpha_resonant_per_m/l_parasitic_rt) or the compact "
+            "inputs (t_ext/l_rt), but not both."
         )
 
     if uses_new:
-        if "R1_resonant" not in parameters or "R2_resonant" not in parameters:
-            raise ValueError("Reflectivity-based cavity loss model requires both R1_resonant and R2_resonant.")
-        reflectivity_input = float(parameters["R1_resonant"])
-        reflectivity_output = float(parameters["R2_resonant"])
+        if "r1_resonant" not in parameters or "r2_resonant" not in parameters:
+            raise ValueError("Reflectivity-based cavity loss model requires both r1_resonant and r2_resonant.")
+        reflectivity_input = float(parameters["r1_resonant"])
+        reflectivity_output = float(parameters["r2_resonant"])
         alpha_resonant_per_m = float(parameters.get("alpha_resonant_per_m", 0.0))
-        parasitic_roundtrip_loss = float(parameters.get("L_parasitic_rt", 0.0))
+        parasitic_roundtrip_loss = float(parameters.get("l_parasitic_rt", 0.0))
         source = "reflectivity_based"
     else:
-        output_coupling_transmission = float(parameters.get("f_T_ext", 0.0))
-        internal_roundtrip_loss = float(parameters.get("f_L_rt", 0.0))
+        output_coupling_transmission = float(parameters.get("t_ext", 0.0))
+        internal_roundtrip_loss = float(parameters.get("l_rt", 0.0))
         reflectivity_input = 1.0
         reflectivity_output = 1.0 - output_coupling_transmission
         alpha_resonant_per_m = 0.0
         parasitic_roundtrip_loss = internal_roundtrip_loss
-        source = "legacy_f_T_ext_f_L_rt"
+        source = "legacy_transmission_loss"
 
     for label, value in (
-        ("R1_resonant", reflectivity_input),
-        ("R2_resonant", reflectivity_output),
+        ("r1_resonant", reflectivity_input),
+        ("r2_resonant", reflectivity_output),
     ):
         if not (0.0 <= value <= 1.0):
             raise ValueError(f"{label} must satisfy 0 <= R <= 1. Received {value}.")
     for label, value in (
         ("alpha_resonant_per_m", alpha_resonant_per_m),
-        ("L_parasitic_rt", parasitic_roundtrip_loss),
+        ("l_parasitic_rt", parasitic_roundtrip_loss),
     ):
         if value < 0.0:
             raise ValueError(f"{label} must be non-negative. Received {value}.")
@@ -110,7 +111,7 @@ def resolve_resonant_loss_model(parameters: dict, roundtrip_propagation_length_m
         raise ValueError("Output coupling transmission must be less than 1.")
     if internal_roundtrip_loss >= 1.0:
         raise ValueError(
-            "Internal round-trip loss must be less than 1. Check R1_resonant, alpha_resonant_per_m, and L_parasitic_rt."
+            "Internal round-trip loss must be less than 1. Check r1_resonant, alpha_resonant_per_m, and l_parasitic_rt."
         )
 
     return {
@@ -170,13 +171,25 @@ def gouy_phases_from_m_factor(geometry, m_factor_dict):
     }
 
 
-def bowtie_m_factor(long_axis, short_axis, incidence_angle, crystal_length, radius_of_curvature, refractive_index, plane="sagittal"):
+def _radius_pair(radius_1, radius_2=None):
+    """Return a backward-compatible radius pair."""
+    return radius_1, radius_1 if radius_2 is None else radius_2
+
+
+def _curvature_pair(radius_1, radius_2):
+    """Convert a radius pair to curvatures for estimator internals."""
+    return radius_to_curvature(radius_1), radius_to_curvature(radius_2)
+
+
+def bowtie_m_factor(long_axis, short_axis, incidence_angle, crystal_length, radius_1, refractive_index, radius_2=None, plane="sagittal"):
     """Return bow-tie cavity m-factor for a selected plane."""
+    radius_1, radius_2 = _radius_pair(radius_1, radius_2)
     matrix = CavityAbcdBuilder.bowtie_roundtrip(
         long_axis,
         short_axis,
         crystal_length,
-        radius_of_curvature,
+        radius_1,
+        radius_2,
         refractive_index,
         incidence_angle,
         plane=plane,
@@ -184,13 +197,15 @@ def bowtie_m_factor(long_axis, short_axis, incidence_angle, crystal_length, radi
     return cavity_stability(matrix)
 
 
-def bowtie_q_parameter(long_axis, short_axis, incidence_angle, crystal_length, radius_of_curvature, refractive_index, plane="sagittal"):
+def bowtie_q_parameter(long_axis, short_axis, incidence_angle, crystal_length, radius_1, refractive_index, radius_2=None, plane="sagittal"):
     """Return bow-tie cavity q parameter for a selected plane."""
+    radius_1, radius_2 = _radius_pair(radius_1, radius_2)
     matrix = CavityAbcdBuilder.bowtie_roundtrip(
         long_axis,
         short_axis,
         crystal_length,
-        radius_of_curvature,
+        radius_1,
+        radius_2,
         refractive_index,
         incidence_angle,
         plane=plane,
@@ -198,92 +213,252 @@ def bowtie_q_parameter(long_axis, short_axis, incidence_angle, crystal_length, r
     return cavity_q_parameter(matrix)
 
 
-def linear_m_factor(radius_of_curvature, cavity_length, crystal_length, refractive_index):
-    """Return m-factor for a symmetric linear cavity."""
+def linear_m_factor(radius_1, cavity_length, crystal_length, refractive_index, radius_2=None):
+    """Return m-factor for a linear cavity."""
+    radius_1, radius_2 = _radius_pair(radius_1, radius_2)
     matrix = CavityAbcdBuilder.linear_roundtrip(
         cavity_length,
         crystal_length,
-        radius_of_curvature,
-        radius_of_curvature,
+        radius_1,
+        radius_2,
         refractive_index,
     )
     return cavity_stability(matrix)
 
 
-def linear_q_parameter(radius_of_curvature, cavity_length, crystal_length, refractive_index):
-    """Return q parameter for a symmetric linear cavity."""
+def linear_q_parameter(radius_1, cavity_length, crystal_length, refractive_index, radius_2=None):
+    """Return q parameter for a linear cavity."""
+    radius_1, radius_2 = _radius_pair(radius_1, radius_2)
     matrix = CavityAbcdBuilder.linear_roundtrip(
         cavity_length,
         crystal_length,
-        radius_of_curvature,
-        radius_of_curvature,
+        radius_1,
+        radius_2,
         refractive_index,
     )
     return cavity_q_parameter(matrix)
 
 
-def hemilithic_m_factor(radius_of_curvature, air_gap, crystal_length, refractive_index):
+def hemilithic_m_factor(radius_1, air_gap, crystal_length, refractive_index, radius_2=None):
     """Return m-factor for a hemilithic cavity."""
+    radius_1, radius_2 = _radius_pair(radius_1, radius_2)
     matrix = CavityAbcdBuilder.hemilithic_roundtrip(
         air_gap,
         crystal_length,
-        radius_of_curvature,
+        radius_1,
+        radius_2,
         refractive_index,
     )
     return cavity_stability(matrix)
 
 
-def hemilithic_q_parameter(radius_of_curvature, air_gap, crystal_length, refractive_index):
+def hemilithic_q_parameter(radius_1, air_gap, crystal_length, refractive_index, radius_2=None):
     """Return q parameter for a hemilithic cavity."""
+    radius_1, radius_2 = _radius_pair(radius_1, radius_2)
     matrix = CavityAbcdBuilder.hemilithic_roundtrip(
         air_gap,
         crystal_length,
-        radius_of_curvature,
+        radius_1,
+        radius_2,
         refractive_index,
     )
     return cavity_q_parameter(matrix)
 
 
-def monolithic_m_factor(radius_of_curvature, crystal_length, refractive_index):
+def monolithic_m_factor(radius_1, crystal_length, refractive_index, radius_2=None):
     """Return m-factor for a monolithic crystal cavity."""
+    radius_1, radius_2 = _radius_pair(radius_1, radius_2)
     matrix = CavityAbcdBuilder.monolithic_roundtrip(
         crystal_length,
         refractive_index,
-        radius_of_curvature,
+        radius_1,
+        radius_2,
     )
     return cavity_stability(matrix)
 
 
-def monolithic_q_parameter(radius_of_curvature, crystal_length, refractive_index):
+def monolithic_q_parameter(radius_1, crystal_length, refractive_index, radius_2=None):
     """Return q parameter for a monolithic crystal cavity."""
+    radius_1, radius_2 = _radius_pair(radius_1, radius_2)
     matrix = CavityAbcdBuilder.monolithic_roundtrip(
         crystal_length,
         refractive_index,
-        radius_of_curvature,
+        radius_1,
+        radius_2,
     )
     return cavity_q_parameter(matrix)
 
 
-def triangle_m_factor(width, height, crystal_length, radius_of_curvature, refractive_index, plane="sagittal"):
+def triangle_m_factor(width, height, crystal_length, radius_1, refractive_index, radius_2=None, plane="sagittal"):
     """Return m-factor for a triangular cavity."""
+    radius_1, radius_2 = _radius_pair(radius_1, radius_2)
     matrix = CavityAbcdBuilder.triangle_roundtrip(
         width,
         height,
         crystal_length,
-        radius_of_curvature,
+        radius_1,
+        radius_2,
         refractive_index,
         plane=plane,
     )
     return cavity_stability(matrix)
 
 
-def triangle_q_parameter(width, height, crystal_length, radius_of_curvature, refractive_index, plane="sagittal"):
+def triangle_q_parameter(width, height, crystal_length, radius_1, refractive_index, radius_2=None, plane="sagittal"):
     """Return q parameter for a triangular cavity."""
+    radius_1, radius_2 = _radius_pair(radius_1, radius_2)
     matrix = CavityAbcdBuilder.triangle_roundtrip(
         width,
         height,
         crystal_length,
-        radius_of_curvature,
+        radius_1,
+        radius_2,
+        refractive_index,
+        plane=plane,
+    )
+    return cavity_q_parameter(matrix)
+
+
+def bowtie_m_factor_from_curvature(
+    long_axis,
+    short_axis,
+    incidence_angle,
+    crystal_length,
+    curvature_1,
+    curvature_2,
+    refractive_index,
+    plane="sagittal",
+):
+    """Return bow-tie m-factor using mirror curvatures."""
+    matrix = CavityAbcdBuilder.bowtie_roundtrip_from_curvature(
+        long_axis,
+        short_axis,
+        crystal_length,
+        curvature_1,
+        curvature_2,
+        refractive_index,
+        incidence_angle,
+        plane=plane,
+    )
+    return cavity_stability(matrix)
+
+
+def bowtie_q_parameter_from_curvature(
+    long_axis,
+    short_axis,
+    incidence_angle,
+    crystal_length,
+    curvature_1,
+    curvature_2,
+    refractive_index,
+    plane="sagittal",
+):
+    """Return bow-tie q parameter using mirror curvatures."""
+    matrix = CavityAbcdBuilder.bowtie_roundtrip_from_curvature(
+        long_axis,
+        short_axis,
+        crystal_length,
+        curvature_1,
+        curvature_2,
+        refractive_index,
+        incidence_angle,
+        plane=plane,
+    )
+    return cavity_q_parameter(matrix)
+
+
+def linear_m_factor_from_curvature(curvature_1, curvature_2, cavity_length, crystal_length, refractive_index):
+    """Return linear-cavity m-factor using mirror curvatures."""
+    matrix = CavityAbcdBuilder.linear_roundtrip_from_curvature(
+        cavity_length,
+        crystal_length,
+        curvature_1,
+        curvature_2,
+        refractive_index,
+    )
+    return cavity_stability(matrix)
+
+
+def linear_q_parameter_from_curvature(curvature_1, curvature_2, cavity_length, crystal_length, refractive_index):
+    """Return linear-cavity q parameter using mirror curvatures."""
+    matrix = CavityAbcdBuilder.linear_roundtrip_from_curvature(
+        cavity_length,
+        crystal_length,
+        curvature_1,
+        curvature_2,
+        refractive_index,
+    )
+    return cavity_q_parameter(matrix)
+
+
+def hemilithic_m_factor_from_curvature(curvature_1, curvature_2, air_gap, crystal_length, refractive_index):
+    """Return hemilithic-cavity m-factor using curvatures."""
+    matrix = CavityAbcdBuilder.hemilithic_roundtrip_from_curvature(
+        air_gap,
+        crystal_length,
+        curvature_1,
+        curvature_2,
+        refractive_index,
+    )
+    return cavity_stability(matrix)
+
+
+def hemilithic_q_parameter_from_curvature(curvature_1, curvature_2, air_gap, crystal_length, refractive_index):
+    """Return hemilithic-cavity q parameter using curvatures."""
+    matrix = CavityAbcdBuilder.hemilithic_roundtrip_from_curvature(
+        air_gap,
+        crystal_length,
+        curvature_1,
+        curvature_2,
+        refractive_index,
+    )
+    return cavity_q_parameter(matrix)
+
+
+def monolithic_m_factor_from_curvature(curvature_1, curvature_2, crystal_length, refractive_index):
+    """Return monolithic-cavity m-factor using facet curvatures."""
+    matrix = CavityAbcdBuilder.monolithic_roundtrip_from_curvature(
+        crystal_length,
+        refractive_index,
+        curvature_1,
+        curvature_2,
+    )
+    return cavity_stability(matrix)
+
+
+def monolithic_q_parameter_from_curvature(curvature_1, curvature_2, crystal_length, refractive_index):
+    """Return monolithic-cavity q parameter using facet curvatures."""
+    matrix = CavityAbcdBuilder.monolithic_roundtrip_from_curvature(
+        crystal_length,
+        refractive_index,
+        curvature_1,
+        curvature_2,
+    )
+    return cavity_q_parameter(matrix)
+
+
+def triangle_m_factor_from_curvature(width, height, crystal_length, curvature_1, curvature_2, refractive_index, plane="sagittal"):
+    """Return triangular-cavity m-factor using mirror curvatures."""
+    matrix = CavityAbcdBuilder.triangle_roundtrip_from_curvature(
+        width,
+        height,
+        crystal_length,
+        curvature_1,
+        curvature_2,
+        refractive_index,
+        plane=plane,
+    )
+    return cavity_stability(matrix)
+
+
+def triangle_q_parameter_from_curvature(width, height, crystal_length, curvature_1, curvature_2, refractive_index, plane="sagittal"):
+    """Return triangular-cavity q parameter using mirror curvatures."""
+    matrix = CavityAbcdBuilder.triangle_roundtrip_from_curvature(
+        width,
+        height,
+        crystal_length,
+        curvature_1,
+        curvature_2,
         refractive_index,
         plane=plane,
     )
@@ -293,71 +468,114 @@ def triangle_q_parameter(width, height, crystal_length, radius_of_curvature, ref
 def make_m_factor_estimator(geometry: str, plane: str = "sagittal"):
     """Build a NumPy-callable m-factor estimator for a geometry."""
     if geometry == "bowtie":
-        long_axis, short_axis, incidence_angle, crystal_length, radius_of_curvature, refractive_index = sp.symbols(
-            "long_axis short_axis incidence_angle crystal_length radius_of_curvature refractive_index", positive=True, real=True
+        long_axis, short_axis, incidence_angle, crystal_length, curvature_1, curvature_2, refractive_index = sp.symbols(
+            "long_axis short_axis incidence_angle crystal_length curvature_1 curvature_2 refractive_index",
+            nonnegative=True,
+            real=True,
         )
-        expr = bowtie_m_factor(
+        expr = bowtie_m_factor_from_curvature(
             long_axis,
             short_axis,
             incidence_angle,
             crystal_length,
-            radius_of_curvature,
+            curvature_1,
+            curvature_2,
             refractive_index,
             plane=plane,
         )
-        return sp.lambdify(
-            (long_axis, short_axis, incidence_angle, crystal_length, radius_of_curvature, refractive_index),
+        estimator = sp.lambdify(
+            (long_axis, short_axis, incidence_angle, crystal_length, curvature_1, curvature_2, refractive_index),
             expr,
             modules="numpy",
             cse=True,
+        )
+        return lambda long_axis_val, short_axis_val, incidence_angle_val, crystal_length_val, radius_1_val, radius_2_val, refractive_index_val: estimator(
+            long_axis_val,
+            short_axis_val,
+            incidence_angle_val,
+            crystal_length_val,
+            *_curvature_pair(radius_1_val, radius_2_val),
+            refractive_index_val,
         )
 
     if geometry == "linear":
-        radius_of_curvature, cavity_length, crystal_length, refractive_index = sp.symbols(
-            "radius_of_curvature cavity_length crystal_length refractive_index", positive=True, real=True
+        curvature_1, curvature_2, cavity_length, crystal_length, refractive_index = sp.symbols(
+            "curvature_1 curvature_2 cavity_length crystal_length refractive_index", nonnegative=True, real=True
         )
-        expr = linear_m_factor(radius_of_curvature, cavity_length, crystal_length, refractive_index)
-        return sp.lambdify(
-            (radius_of_curvature, cavity_length, crystal_length, refractive_index),
+        expr = linear_m_factor_from_curvature(curvature_1, curvature_2, cavity_length, crystal_length, refractive_index)
+        estimator = sp.lambdify(
+            (curvature_1, curvature_2, cavity_length, crystal_length, refractive_index),
             expr,
             modules="numpy",
             cse=True,
+        )
+        return lambda radius_1_val, radius_2_val, cavity_length_val, crystal_length_val, refractive_index_val: estimator(
+            *_curvature_pair(radius_1_val, radius_2_val),
+            cavity_length_val,
+            crystal_length_val,
+            refractive_index_val,
         )
 
     if geometry == "hemilithic":
-        radius_of_curvature, air_gap, crystal_length, refractive_index = sp.symbols(
-            "radius_of_curvature air_gap crystal_length refractive_index", positive=True, real=True
+        curvature_1, curvature_2, air_gap, crystal_length, refractive_index = sp.symbols(
+            "curvature_1 curvature_2 air_gap crystal_length refractive_index", nonnegative=True, real=True
         )
-        expr = hemilithic_m_factor(radius_of_curvature, air_gap, crystal_length, refractive_index)
-        return sp.lambdify(
-            (radius_of_curvature, air_gap, crystal_length, refractive_index),
+        expr = hemilithic_m_factor_from_curvature(curvature_1, curvature_2, air_gap, crystal_length, refractive_index)
+        estimator = sp.lambdify(
+            (curvature_1, curvature_2, air_gap, crystal_length, refractive_index),
             expr,
             modules="numpy",
             cse=True,
+        )
+        return lambda radius_1_val, radius_2_val, air_gap_val, crystal_length_val, refractive_index_val: estimator(
+            *_curvature_pair(radius_1_val, radius_2_val),
+            air_gap_val,
+            crystal_length_val,
+            refractive_index_val,
         )
 
     if geometry == "monolithic":
-        radius_of_curvature, crystal_length, refractive_index = sp.symbols(
-            "radius_of_curvature crystal_length refractive_index", positive=True, real=True
+        curvature_1, curvature_2, crystal_length, refractive_index = sp.symbols(
+            "curvature_1 curvature_2 crystal_length refractive_index", nonnegative=True, real=True
         )
-        expr = monolithic_m_factor(radius_of_curvature, crystal_length, refractive_index)
-        return sp.lambdify(
-            (radius_of_curvature, crystal_length, refractive_index),
+        expr = monolithic_m_factor_from_curvature(curvature_1, curvature_2, crystal_length, refractive_index)
+        estimator = sp.lambdify(
+            (curvature_1, curvature_2, crystal_length, refractive_index),
             expr,
             modules="numpy",
             cse=True,
+        )
+        return lambda radius_1_val, radius_2_val, crystal_length_val, refractive_index_val: estimator(
+            *_curvature_pair(radius_1_val, radius_2_val),
+            crystal_length_val,
+            refractive_index_val,
         )
 
     if geometry == "triangle":
-        width, height, crystal_length, radius_of_curvature, refractive_index = sp.symbols(
-            "width height crystal_length radius_of_curvature refractive_index", positive=True, real=True
+        width, height, crystal_length, curvature_1, curvature_2, refractive_index = sp.symbols(
+            "width height crystal_length curvature_1 curvature_2 refractive_index", nonnegative=True, real=True
         )
-        expr = triangle_m_factor(width, height, crystal_length, radius_of_curvature, refractive_index, plane=plane)
-        return sp.lambdify(
-            (width, height, crystal_length, radius_of_curvature, refractive_index),
+        expr = triangle_m_factor_from_curvature(
+            width,
+            height,
+            crystal_length,
+            curvature_1,
+            curvature_2,
+            refractive_index,
+            plane=plane,
+        )
+        estimator = sp.lambdify(
+            (width, height, crystal_length, curvature_1, curvature_2, refractive_index),
             expr,
             modules="numpy",
             cse=True,
+        )
+        return lambda width_val, height_val, crystal_length_val, radius_1_val, radius_2_val, refractive_index_val: estimator(
+            width_val,
+            height_val,
+            crystal_length_val,
+            *_curvature_pair(radius_1_val, radius_2_val),
+            refractive_index_val,
         )
 
     raise ValueError("geometry must be 'bowtie', 'linear', 'triangle', 'hemilithic', or 'monolithic'")
@@ -366,71 +584,114 @@ def make_m_factor_estimator(geometry: str, plane: str = "sagittal"):
 def make_q_estimator(geometry: str, plane: str = "sagittal"):
     """Build a NumPy-callable q-parameter estimator for a geometry."""
     if geometry == "bowtie":
-        long_axis, short_axis, incidence_angle, crystal_length, radius_of_curvature, refractive_index = sp.symbols(
-            "long_axis short_axis incidence_angle crystal_length radius_of_curvature refractive_index", positive=True, real=True
+        long_axis, short_axis, incidence_angle, crystal_length, curvature_1, curvature_2, refractive_index = sp.symbols(
+            "long_axis short_axis incidence_angle crystal_length curvature_1 curvature_2 refractive_index",
+            nonnegative=True,
+            real=True,
         )
-        expr = bowtie_q_parameter(
+        expr = bowtie_q_parameter_from_curvature(
             long_axis,
             short_axis,
             incidence_angle,
             crystal_length,
-            radius_of_curvature,
+            curvature_1,
+            curvature_2,
             refractive_index,
             plane=plane,
         )
-        return sp.lambdify(
-            (long_axis, short_axis, incidence_angle, crystal_length, radius_of_curvature, refractive_index),
+        estimator = sp.lambdify(
+            (long_axis, short_axis, incidence_angle, crystal_length, curvature_1, curvature_2, refractive_index),
             expr,
             modules="numpy",
             cse=True,
+        )
+        return lambda long_axis_val, short_axis_val, incidence_angle_val, crystal_length_val, radius_1_val, radius_2_val, refractive_index_val: estimator(
+            long_axis_val,
+            short_axis_val,
+            incidence_angle_val,
+            crystal_length_val,
+            *_curvature_pair(radius_1_val, radius_2_val),
+            refractive_index_val,
         )
 
     if geometry == "linear":
-        radius_of_curvature, cavity_length, crystal_length, refractive_index = sp.symbols(
-            "radius_of_curvature cavity_length crystal_length refractive_index", positive=True, real=True
+        curvature_1, curvature_2, cavity_length, crystal_length, refractive_index = sp.symbols(
+            "curvature_1 curvature_2 cavity_length crystal_length refractive_index", nonnegative=True, real=True
         )
-        expr = linear_q_parameter(radius_of_curvature, cavity_length, crystal_length, refractive_index)
-        return sp.lambdify(
-            (radius_of_curvature, cavity_length, crystal_length, refractive_index),
+        expr = linear_q_parameter_from_curvature(curvature_1, curvature_2, cavity_length, crystal_length, refractive_index)
+        estimator = sp.lambdify(
+            (curvature_1, curvature_2, cavity_length, crystal_length, refractive_index),
             expr,
             modules="numpy",
             cse=True,
+        )
+        return lambda radius_1_val, radius_2_val, cavity_length_val, crystal_length_val, refractive_index_val: estimator(
+            *_curvature_pair(radius_1_val, radius_2_val),
+            cavity_length_val,
+            crystal_length_val,
+            refractive_index_val,
         )
 
     if geometry == "hemilithic":
-        radius_of_curvature, air_gap, crystal_length, refractive_index = sp.symbols(
-            "radius_of_curvature air_gap crystal_length refractive_index", positive=True, real=True
+        curvature_1, curvature_2, air_gap, crystal_length, refractive_index = sp.symbols(
+            "curvature_1 curvature_2 air_gap crystal_length refractive_index", nonnegative=True, real=True
         )
-        expr = hemilithic_q_parameter(radius_of_curvature, air_gap, crystal_length, refractive_index)
-        return sp.lambdify(
-            (radius_of_curvature, air_gap, crystal_length, refractive_index),
+        expr = hemilithic_q_parameter_from_curvature(curvature_1, curvature_2, air_gap, crystal_length, refractive_index)
+        estimator = sp.lambdify(
+            (curvature_1, curvature_2, air_gap, crystal_length, refractive_index),
             expr,
             modules="numpy",
             cse=True,
+        )
+        return lambda radius_1_val, radius_2_val, air_gap_val, crystal_length_val, refractive_index_val: estimator(
+            *_curvature_pair(radius_1_val, radius_2_val),
+            air_gap_val,
+            crystal_length_val,
+            refractive_index_val,
         )
 
     if geometry == "monolithic":
-        radius_of_curvature, crystal_length, refractive_index = sp.symbols(
-            "radius_of_curvature crystal_length refractive_index", positive=True, real=True
+        curvature_1, curvature_2, crystal_length, refractive_index = sp.symbols(
+            "curvature_1 curvature_2 crystal_length refractive_index", nonnegative=True, real=True
         )
-        expr = monolithic_q_parameter(radius_of_curvature, crystal_length, refractive_index)
-        return sp.lambdify(
-            (radius_of_curvature, crystal_length, refractive_index),
+        expr = monolithic_q_parameter_from_curvature(curvature_1, curvature_2, crystal_length, refractive_index)
+        estimator = sp.lambdify(
+            (curvature_1, curvature_2, crystal_length, refractive_index),
             expr,
             modules="numpy",
             cse=True,
+        )
+        return lambda radius_1_val, radius_2_val, crystal_length_val, refractive_index_val: estimator(
+            *_curvature_pair(radius_1_val, radius_2_val),
+            crystal_length_val,
+            refractive_index_val,
         )
 
     if geometry == "triangle":
-        width, height, crystal_length, radius_of_curvature, refractive_index = sp.symbols(
-            "width height crystal_length radius_of_curvature refractive_index", positive=True, real=True
+        width, height, crystal_length, curvature_1, curvature_2, refractive_index = sp.symbols(
+            "width height crystal_length curvature_1 curvature_2 refractive_index", nonnegative=True, real=True
         )
-        expr = triangle_q_parameter(width, height, crystal_length, radius_of_curvature, refractive_index, plane=plane)
-        return sp.lambdify(
-            (width, height, crystal_length, radius_of_curvature, refractive_index),
+        expr = triangle_q_parameter_from_curvature(
+            width,
+            height,
+            crystal_length,
+            curvature_1,
+            curvature_2,
+            refractive_index,
+            plane=plane,
+        )
+        estimator = sp.lambdify(
+            (width, height, crystal_length, curvature_1, curvature_2, refractive_index),
             expr,
             modules="numpy",
             cse=True,
+        )
+        return lambda width_val, height_val, crystal_length_val, radius_1_val, radius_2_val, refractive_index_val: estimator(
+            width_val,
+            height_val,
+            crystal_length_val,
+            *_curvature_pair(radius_1_val, radius_2_val),
+            refractive_index_val,
         )
 
     raise ValueError("geometry must be 'bowtie', 'linear', 'triangle', 'hemilithic', or 'monolithic'")
@@ -440,6 +701,7 @@ __all__ = [
     "cavity_stability",
     "cavity_q_parameter",
     "beam_waist_from_q",
+    "radius_to_curvature",
     "optical_roundtrip_length",
     "fsr_from_roundtrip_length",
     "compute_decay_rates",
@@ -454,6 +716,16 @@ __all__ = [
     "monolithic_q_parameter",
     "triangle_m_factor",
     "triangle_q_parameter",
+    "bowtie_m_factor_from_curvature",
+    "bowtie_q_parameter_from_curvature",
+    "linear_m_factor_from_curvature",
+    "linear_q_parameter_from_curvature",
+    "hemilithic_m_factor_from_curvature",
+    "hemilithic_q_parameter_from_curvature",
+    "monolithic_m_factor_from_curvature",
+    "monolithic_q_parameter_from_curvature",
+    "triangle_m_factor_from_curvature",
+    "triangle_q_parameter_from_curvature",
     "make_m_factor_estimator",
     "make_q_estimator",
 ]

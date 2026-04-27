@@ -45,59 +45,63 @@ from cavity_workflow import (
 # Geometry selection
 
 # Choose: "bowtie", "linear", "triangle", "hemilithic", or "monolithic"
-GEOMETRY = "monolithic"
+GEOMETRY = "bowtie"
 
 # %% Select parameters
 
-f_crystal_length = 4.0975e-3
-f_n_crystal = 1.78
-f_RoC = 10e-3
-f_wavelength = 1540e-9
+# Crystal parameters
+CRYSTAL_LENGTH_M = 16e-3
+N_CRYSTAL = 1.78
+
+ROC_1_M = 50e-3
+ROC_2_M = 50e-3
+WAVELENGTH_M = 1550e-9
 
 # Resonant-field cavity loss model:
-# R1_resonant is the non-output mirror/facet reflectivity and any transmission
-# through it is treated as internal cavity loss. R2_resonant defines the output
+# R1_RESONANT is the non-output mirror/facet reflectivity and any transmission
+# through it is treated as internal cavity loss. R2_RESONANT defines the output
 # coupling. Distributed loss and parasitic round-trip loss remain internal.
-R1_resonant = 0.999
-R2_resonant = 0.954
-alpha_resonant_per_m = 0.0
-L_parasitic_rt = 0.0
-f_detuning_Hz = 0.0
+R1_RESONANT = 0.999
+R2_RESONANT = 0.954
+ALPHA_RESONANT_PER_M = 0.0
+L_PARASITIC_RT = 0.0
+DETUNING_HZ = 0.0
 
 # Bow-tie parameters
-f_theta_AOI = 6 * DEG_TO_RAD
-f_short_axis = np.arange(56e-3, 71e-3, 0.01e-3)
-f_long_axis = np.arange(70e-3, 120e-3, 0.5e-3)
-mesh_short_axis, mesh_long_axis = np.meshgrid(f_short_axis, f_long_axis)
+THETA_AOI_RAD = 6 * DEG_TO_RAD
+SHORT_AXIS_SCAN_M = np.arange(56e-3, 71e-3, 0.01e-3)
+LONG_AXIS_SCAN_M = np.arange(70e-3, 120e-3, 0.5e-3)
+MESH_SHORT_AXIS_M, MESH_LONG_AXIS_M = np.meshgrid(SHORT_AXIS_SCAN_M, LONG_AXIS_SCAN_M)
 
 # Linear parameters
-f_L_cav = 50e-3
+L_CAV_M = 50e-3
 
 # Hemilithic parameters
-f_L_air = 20e-3
+L_AIR_M = 20e-3
 
 # Triangle parameters
-f_triangle_width = np.arange(max(f_crystal_length + 1e-3, 40e-3), 140e-3, 0.5e-3)
-f_triangle_height = np.arange(10e-3, 80e-3, 0.5e-3)
-mesh_triangle_width, mesh_triangle_height = np.meshgrid(f_triangle_width, f_triangle_height)
+TRIANGLE_WIDTH_SCAN_M = np.arange(max(CRYSTAL_LENGTH_M + 1e-3, 40e-3), 140e-3, 0.5e-3)
+TRIANGLE_HEIGHT_SCAN_M = np.arange(10e-3, 80e-3, 0.5e-3)
+MESH_TRIANGLE_WIDTH_M, MESH_TRIANGLE_HEIGHT_M = np.meshgrid(TRIANGLE_WIDTH_SCAN_M, TRIANGLE_HEIGHT_SCAN_M)
 
-parameters = {
-    "f_crystal_length": f_crystal_length,
-    "f_n_crystal": f_n_crystal,
-    "f_RoC": f_RoC,
-    "f_wavelength": f_wavelength,
-    "R1_resonant": R1_resonant,
-    "R2_resonant": R2_resonant,
-    "alpha_resonant_per_m": alpha_resonant_per_m,
-    "L_parasitic_rt": L_parasitic_rt,
-    "f_detuning_Hz": f_detuning_Hz,
-    "f_theta_AOI": f_theta_AOI,
-    "f_L_cav": f_L_cav,
-    "f_L_air": f_L_air,
-    "mesh_short_axis": mesh_short_axis,
-    "mesh_long_axis": mesh_long_axis,
-    "mesh_triangle_width": mesh_triangle_width,
-    "mesh_triangle_height": mesh_triangle_height,
+PARAMETERS = {
+    "crystal_length_m": CRYSTAL_LENGTH_M,
+    "n_crystal": N_CRYSTAL,
+    "roc_1_m": ROC_1_M,
+    "roc_2_m": ROC_2_M,
+    "wavelength_m": WAVELENGTH_M,
+    "r1_resonant": R1_RESONANT,
+    "r2_resonant": R2_RESONANT,
+    "alpha_resonant_per_m": ALPHA_RESONANT_PER_M,
+    "l_parasitic_rt": L_PARASITIC_RT,
+    "detuning_hz": DETUNING_HZ,
+    "theta_aoi_rad": THETA_AOI_RAD,
+    "l_cav_m": L_CAV_M,
+    "l_air_m": L_AIR_M,
+    "mesh_short_axis_m": MESH_SHORT_AXIS_M,
+    "mesh_long_axis_m": MESH_LONG_AXIS_M,
+    "mesh_triangle_width_m": MESH_TRIANGLE_WIDTH_M,
+    "mesh_triangle_height_m": MESH_TRIANGLE_HEIGHT_M,
 }
 
 # %%
@@ -108,8 +112,8 @@ print_geometry_info(GEOMETRY)
 # %%
 # Geometry-dependent estimators
 
-estimators = build_geometry_estimators(GEOMETRY, parameters)
-context = build_cavity_context(GEOMETRY, parameters, estimators=estimators)
+estimators = build_geometry_estimators(GEOMETRY, PARAMETERS)
+context = build_cavity_context(GEOMETRY, PARAMETERS, estimators=estimators)
 
 # %%
 # Stability and waist plots
@@ -117,21 +121,23 @@ context = build_cavity_context(GEOMETRY, parameters, estimators=estimators)
 plotter = CavityPlotter(GEOMETRY)
 fig_stability = plotter.make_stability_plot(
     estimate_m_factor_s=estimators.estimate_m_factor_s,
-    crystal_length=f_crystal_length,
-    n_crystal=f_n_crystal,
-    radius_of_curvature=f_RoC,
-    incidence_angle=f_theta_AOI,
+    crystal_length=CRYSTAL_LENGTH_M,
+    n_crystal=N_CRYSTAL,
+    radius_of_curvature_1=ROC_1_M,
+    radius_of_curvature_2=ROC_2_M,
+    incidence_angle=THETA_AOI_RAD,
     mesh_x=estimators.mesh_x,
     mesh_y=estimators.mesh_y,
 )
 
 fig_waist = plotter.make_waist_plot(
     estimate_q_sagittal=estimators.estimate_q_sagittal,
-    crystal_length=f_crystal_length,
-    n_crystal=f_n_crystal,
-    wavelength=f_wavelength,
-    radius_of_curvature=f_RoC,
-    incidence_angle=f_theta_AOI,
+    crystal_length=CRYSTAL_LENGTH_M,
+    n_crystal=N_CRYSTAL,
+    wavelength=WAVELENGTH_M,
+    radius_of_curvature_1=ROC_1_M,
+    radius_of_curvature_2=ROC_2_M,
+    incidence_angle=THETA_AOI_RAD,
     mesh_x=estimators.mesh_x,
     mesh_y=estimators.mesh_y,
 )
@@ -140,19 +146,20 @@ fig_waist = plotter.make_waist_plot(
 # Single-point evaluation
 
 # Explicit single-point selections used for the detailed evaluation step.
-single_point_parameters = {
-    "single_point_RoC_m": 10e-3,
-    "bowtie_short_axis_m": 68e-3,
-    "bowtie_long_axis_m": 90e-3,
-    "bowtie_theta_AOI_rad": 6 * DEG_TO_RAD,
-    "linear_cavity_length_m": 50e-3,
-    "triangle_width_m": 80e-3,
-    "triangle_height_m": 30e-3,
-    "hemilithic_air_gap_m": 20e-3,
-    "monolithic_crystal_length_m": f_crystal_length,
+SINGLE_POINT_PARAMETERS = {
+    "ROC_1_M": 50e-3,
+    "ROC_2_M": 50e-3,
+    "BOWTIE_SHORT_AXIS_M": 68e-3,
+    "BOWTIE_LONG_AXIS_M": 90e-3,
+    "BOWTIE_THETA_AOI_RAD": 6 * DEG_TO_RAD,
+    "LINEAR_CAVITY_LENGTH_M": 50e-3,
+    "TRIANGLE_WIDTH_M": 80e-3,
+    "TRIANGLE_HEIGHT_M": 30e-3,
+    "HEMILITHIC_AIR_GAP_M": 20e-3,
+    "MONOLITHIC_CRYSTAL_LENGTH_M": CRYSTAL_LENGTH_M,
 }
 
-single_point = compute_cavity_operating_point(context, single_point_parameters)
+single_point = compute_cavity_operating_point(context, SINGLE_POINT_PARAMETERS)
 print_single_point_summary(GEOMETRY, single_point)
 
 # %%
@@ -162,8 +169,8 @@ derived = compute_cavity_derived_quantities(
     context,
     single_point,
     c_m_per_s=C_M_PER_S,
-    detuning_Hz=f_detuning_Hz,
-    loss_model_parameters=parameters,
+    detuning_Hz=DETUNING_HZ,
+    loss_model_parameters=PARAMETERS,
 )
 print_derived_cavity_quantities(derived)
 
