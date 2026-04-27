@@ -22,13 +22,21 @@ from .crystal_mode_matching import (
     build_mode_matching_context_from_cavity_output,
     estimate_mode_matching_quantities,
 )
+from .crystal_double_resonance_scan import compute_double_resonance_scan
+from .crystal_materials import (
+    build_refractive_index_model,
+    get_axis_index_function,
+    resolve_effective_nonlinearity,
+    resolve_phase_matching_configuration,
+)
+from .crystal_polarization_resonance import compute_polarization_resonance_diagnostic
 from .crystal_boyd_kleinman import (
     BKAnalysisConfig,
     bk_analysis_result_to_dict,
     run_bk_analysis_pair,
 )
 from .crystal_phase_matching import compute_design_poling_period as compute_design_poling_period_from_material_model
-from .crystal_phase_matching import scan_phase_matching_vs_temperature
+from .crystal_phase_matching import delta_k_eff_T, scan_phase_matching_vs_temperature
 
 _BK_MAP_KEYS = frozenset(
     {
@@ -38,6 +46,16 @@ _BK_MAP_KEYS = frozenset(
     }
 )
 _CRYSTAL_LENGTH_MATCH_TOLERANCE_M = 1e-9
+_INTERNAL_DEFAULTS: dict[str, Any] = {
+    "cavity_output_path": None,
+    "enable_double_resonance_scan": True,
+    "double_resonance_t_min_K": 315.0,
+    "double_resonance_t_max_K": 320.0,
+    "double_resonance_n_T": 201,
+    "double_resonance_l_min_m": 4.0e-3,
+    "double_resonance_l_max_m": 4.2e-3,
+    "double_resonance_n_L": 161,
+}
 
 
 @dataclass(frozen=True)
@@ -69,6 +87,7 @@ class CrystalSimulationResult:
     active_polarization_resonance: dict[str, Any] | None = None
     double_resonance_scan: dict[str, Any] | None = None
     bk_analysis: dict[str, Any] | None = None
+    simulation_inputs: dict[str, Any] | None = None
 
 
 def _load_cavity_output_data(path: str | Path) -> dict[str, Any]:
@@ -164,6 +183,52 @@ def compute_crystal_phase_matching(
         qpm_order_m=qpm_order_m,
     )
     return _phase_matching_scan_to_output(scan)
+
+
+def compute_crystal_phase_matching_at_temperature(
+    context: CrystalContext,
+    n_p_of_T: Callable[[float], float],
+    n_s_of_T: Callable[[float], float],
+    n_i_of_T: Callable[[float], float],
+    wavelength_p_m: float,
+    wavelength_s_m: float,
+    wavelength_i_m: float,
+    Lambda0_m: float,
+    temperature_K: float,
+    T0_K: float = 293.15,
+    alpha_perK: float = 0.0,
+    qpm_order_m: int = 1,
+) -> dict[str, Any]:
+    """Compute phase-matching quantities at one explicit operating temperature."""
+    result = delta_k_eff_T(
+        temperature_K,
+        wavelength_p_m,
+        wavelength_s_m,
+        wavelength_i_m,
+        n_p_of_T,
+        n_s_of_T,
+        n_i_of_T,
+        Lambda0_m,
+        context.crystal_length_m,
+        T0_K=T0_K,
+        alpha_perK=alpha_perK,
+        qpm_order_m=qpm_order_m,
+    )
+    return {
+        "T_K": [result.T_K],
+        "n_p": [result.n_p],
+        "n_s": [result.n_s],
+        "n_i": [result.n_i],
+        "delta_k_rad_per_m": [result.delta_k_rad_per_m],
+        "delta_k_eff_rad_per_m": [result.delta_k_eff_rad_per_m],
+        "pm_power": [result.pm_power],
+        "Lambda_T_m": [result.Lambda_T_m],
+        "T_best_K": [result.T_K],
+        "pm_power_best": [result.pm_power],
+        "Lambda0_input_m": [float(Lambda0_m)],
+        "Lambda0_effective_m": [float(Lambda0_m)],
+        "T_reference_for_lambda_opt_K": [result.T_K],
+    }
 
 
 def compute_design_poling_period(
@@ -278,6 +343,7 @@ def build_crystal_simulation_result(
     active_polarization_resonance: dict[str, Any] | None = None,
     double_resonance_scan: dict[str, Any] | None = None,
     bk_analysis: dict[str, Any] | None = None,
+    simulation_inputs: dict[str, Any] | None = None,
 ) -> CrystalSimulationResult:
     """Build the structured crystal workflow result."""
     return CrystalSimulationResult(
@@ -293,6 +359,7 @@ def build_crystal_simulation_result(
         active_polarization_resonance=active_polarization_resonance,
         double_resonance_scan=double_resonance_scan,
         bk_analysis=bk_analysis,
+        simulation_inputs=simulation_inputs,
     )
 
 
@@ -301,34 +368,63 @@ def build_phase_matching_operating_point(
     resonance_diagnostic: dict[str, Any] | None,
 ) -> dict[str, Any] | None:
     """Build the phase-matching operating point candidate."""
-    resonance = resonance_diagnostic
-    if resonance is None:
+    if resonance_diagnostic is None:
         return None
+    required_phase_keys = ("T_best_K", "pm_power_best")
+    required_resonance_keys = (
+        "signal_axis",
+        "idler_axis",
+        "n_signal",
+        "n_idler",
+        "delta_phi_wrapped_rad",
+        "is_double_resonant",
+    )
+    missing_phase_keys = [key for key in required_phase_keys if key not in phase_matching]
+    missing_resonance_keys = [key for key in required_resonance_keys if key not in resonance_diagnostic]
+    if missing_phase_keys:
+        raise ValueError(f"Cannot build phase-matching operating point; missing phase keys: {missing_phase_keys}")
+    if missing_resonance_keys:
+        raise ValueError(
+            "Cannot build phase-matching operating point; "
+            f"missing resonance keys: {missing_resonance_keys}"
+        )
 
     return {
         "temperature_K": float(phase_matching["T_best_K"][0]),
         "phase_matching_power_factor": float(phase_matching["pm_power_best"][0]),
-        "signal_axis": resonance["signal_axis"],
-        "idler_axis": resonance["idler_axis"],
-        "n_signal": float(resonance["n_signal"]),
-        "n_idler": float(resonance["n_idler"]),
-        "wrapped_phase_mismatch_rad": float(resonance["delta_phi_wrapped_rad"]),
-        "is_double_resonant": bool(resonance["is_double_resonant"]),
+        "signal_axis": resonance_diagnostic["signal_axis"],
+        "idler_axis": resonance_diagnostic["idler_axis"],
+        "n_signal": float(resonance_diagnostic["n_signal"]),
+        "n_idler": float(resonance_diagnostic["n_idler"]),
+        "wrapped_phase_mismatch_rad": float(resonance_diagnostic["delta_phi_wrapped_rad"]),
+        "is_double_resonant": bool(resonance_diagnostic["is_double_resonant"]),
     }
 
 
 def build_double_resonance_operating_point(double_resonance_scan: dict[str, Any] | None) -> dict[str, Any] | None:
     """Build the double-resonance operating point candidate."""
-    scan = double_resonance_scan
-    if scan is None:
+    if double_resonance_scan is None:
         return None
+    required_scan_keys = (
+        "best_temperature_K",
+        "best_crystal_length_m",
+        "best_delta_phi_wrapped_rad",
+        "best_abs_delta_phi_wrapped_rad",
+        "best_is_double_resonant",
+    )
+    missing_scan_keys = [key for key in required_scan_keys if key not in double_resonance_scan]
+    if missing_scan_keys:
+        raise ValueError(
+            "Cannot build double-resonance operating point; "
+            f"missing scan keys: {missing_scan_keys}"
+        )
 
     return {
-        "temperature_K": float(scan["best_temperature_K"]),
-        "crystal_length_m": float(scan["best_crystal_length_m"]),
-        "wrapped_phase_mismatch_rad": float(scan["best_delta_phi_wrapped_rad"]),
-        "abs_wrapped_phase_mismatch_rad": float(scan["best_abs_delta_phi_wrapped_rad"]),
-        "is_double_resonant": bool(scan["best_is_double_resonant"]),
+        "temperature_K": float(double_resonance_scan["best_temperature_K"]),
+        "crystal_length_m": float(double_resonance_scan["best_crystal_length_m"]),
+        "wrapped_phase_mismatch_rad": float(double_resonance_scan["best_delta_phi_wrapped_rad"]),
+        "abs_wrapped_phase_mismatch_rad": float(double_resonance_scan["best_abs_delta_phi_wrapped_rad"]),
+        "is_double_resonant": bool(double_resonance_scan["best_is_double_resonant"]),
     }
 
 
@@ -344,15 +440,482 @@ def select_crystal_operating_point(
         "double_resonance": double_resonance_operating_point,
     }
     if normalized_mode not in candidates:
-        supported = ", ".join(candidates)
+        supported = ", ".join(sorted(candidates))
         raise ValueError(f"Unknown OPERATING_POINT_MODE: {mode}. Supported values: {supported}")
 
     selected_operating_point = candidates[normalized_mode]
     if selected_operating_point is None:
+        available_modes = sorted(key for key, value in candidates.items() if value is not None)
+        available = ", ".join(available_modes) if available_modes else "none"
         raise ValueError(
-            f"Requested operating-point mode '{normalized_mode}' is unavailable for this run."
+            f"Requested operating-point mode '{normalized_mode}' is unavailable for this run. "
+            f"Available modes: {available}."
+        )
+    if "temperature_K" not in selected_operating_point:
+        raise ValueError(
+            f"Selected operating point '{normalized_mode}' is missing required key: temperature_K"
         )
     return selected_operating_point
+
+
+def _get_config(config: dict[str, Any], key: str, default: Any = None) -> Any:
+    """Read one config value, accepting the uppercase names used by entry scripts."""
+    if key in config:
+        return config[key]
+    lower_key = key.lower()
+    if lower_key in config:
+        return config[lower_key]
+    return default
+
+
+def _merge_defaults(config: dict[str, Any]) -> dict[str, Any]:
+    """Merge internal workflow defaults with caller-provided configuration."""
+    return {**_INTERNAL_DEFAULTS, **config}
+
+
+def _resolve_crystal_config(config: dict[str, Any]) -> dict[str, Any]:
+    """Normalize entry-point config names after defaults have been merged."""
+    cfg = config
+    return {
+        "geometry": str(_get_config(cfg, "GEOMETRY")),
+        "crystal_model": str(_get_config(cfg, "CRYSTAL_MODEL", "Kato2002")),
+        "wavelength_p_m": float(_get_config(cfg, "WAVELENGTH_P_M")),
+        "wavelength_s_m": float(_get_config(cfg, "WAVELENGTH_S_M")),
+        "wavelength_i_m": float(_get_config(cfg, "WAVELENGTH_I_M")),
+        "phase_matching_mode": str(_get_config(cfg, "PHASE_MATCHING_MODE", "design")),
+        "phase_matching_type": str(_get_config(cfg, "PHASE_MATCHING_TYPE", "type_II")),
+        "design_temperature_K": float(_get_config(cfg, "DESIGN_TEMPERATURE_K")),
+        "analysis_lambda0_m": float(_get_config(cfg, "ANALYSIS_LAMBDA0_M")),
+        "T_min_K": float(_get_config(cfg, "T_MIN_K")),
+        "T_max_K": float(_get_config(cfg, "T_MAX_K")),
+        "n_T": int(_get_config(cfg, "N_T")),
+        "T0_K": float(_get_config(cfg, "T0_K", 293.15)),
+        "alpha_perK": float(_get_config(cfg, "ALPHA_PER_K", 0.0)),
+        "qpm_order_m": int(_get_config(cfg, "QPM_ORDER_M", 1)),
+        "operating_point_mode": str(_get_config(cfg, "OPERATING_POINT_MODE", "double_resonance")),
+        "cavity_output_path": _get_config(cfg, "cavity_output_path"),
+        "enable_double_resonance_scan": bool(_get_config(cfg, "enable_double_resonance_scan")),
+        "double_resonance_t_min_K": float(_get_config(cfg, "double_resonance_t_min_K")),
+        "double_resonance_t_max_K": float(_get_config(cfg, "double_resonance_t_max_K")),
+        "double_resonance_n_T": int(_get_config(cfg, "double_resonance_n_T")),
+        "double_resonance_l_min_m": float(_get_config(cfg, "double_resonance_l_min_m")),
+        "double_resonance_l_max_m": float(_get_config(cfg, "double_resonance_l_max_m")),
+        "double_resonance_n_L": int(_get_config(cfg, "double_resonance_n_L")),
+    }
+
+
+def _build_temperature_index_function(axis_model: Callable[[float, float], float], wavelength_m: float):
+    """Bind one axis model to a fixed wavelength for a temperature scan."""
+
+    def _index_of_T(T_K: float) -> float:
+        return float(axis_model(wavelength_m, T_K))
+
+    return _index_of_T
+
+
+def _build_wavelength_temperature_index_function(axis_model: Callable[[float, float], float]):
+    """Expose one axis model directly as ``n(lambda, T)``."""
+
+    def _index_of_lambda_T(wavelength_m: float, T_K: float) -> float:
+        return float(axis_model(wavelength_m, T_K))
+
+    return _index_of_lambda_T
+
+
+def _build_refractive_index_functions(
+    crystal_model: str,
+    phase_matching_type: str,
+    wavelength_p_m: float,
+    wavelength_s_m: float,
+    wavelength_i_m: float,
+) -> dict[str, Any]:
+    refractive_index_model = build_refractive_index_model(crystal_model)
+    phase_config = resolve_phase_matching_configuration(phase_matching_type)
+    d_eff_config = resolve_effective_nonlinearity(crystal_model, phase_matching_type)
+
+    pump_axis_model = get_axis_index_function(refractive_index_model, phase_config.pump_axis)
+    signal_axis_model = get_axis_index_function(refractive_index_model, phase_config.signal_axis)
+    idler_axis_model = get_axis_index_function(refractive_index_model, phase_config.idler_axis)
+
+    return {
+        "phase_config": phase_config,
+        "d_eff_config": d_eff_config,
+        "signal_axis_model": signal_axis_model,
+        "n_p_of_T": _build_temperature_index_function(pump_axis_model, wavelength_p_m),
+        "n_s_of_T": _build_temperature_index_function(signal_axis_model, wavelength_s_m),
+        "n_i_of_T": _build_temperature_index_function(idler_axis_model, wavelength_i_m),
+        "n_p_of_lambda_T": _build_wavelength_temperature_index_function(pump_axis_model),
+        "n_s_of_lambda_T": _build_wavelength_temperature_index_function(signal_axis_model),
+        "n_i_of_lambda_T": _build_wavelength_temperature_index_function(idler_axis_model),
+    }
+
+
+def _build_simulation_inputs_payload(
+    *,
+    crystal_model: str,
+    mode_matching_n_crystal: float,
+    phase_matching_mode: str,
+    phase_config: Any,
+    d_eff_config: Any,
+    operating_point_mode: str,
+    design_temperature_K: float,
+    Lambda0_m: float,
+    design_poling: Any | None,
+) -> dict[str, Any]:
+    payload = {
+        "crystal_model": crystal_model,
+        "n_crystal": mode_matching_n_crystal,
+        "phase_matching_mode": phase_matching_mode,
+        "phase_matching_type": phase_config.phase_matching_type,
+        "pump_axis": phase_config.pump_axis,
+        "signal_axis": phase_config.signal_axis,
+        "idler_axis": phase_config.idler_axis,
+        "d_eff_pm_per_V": d_eff_config.d_eff_pm_per_V,
+        "d_eff_notes": list(d_eff_config.notes),
+        "operating_point_mode": operating_point_mode,
+        "design_temperature_K": design_temperature_K if str(phase_matching_mode).strip().lower() == "design" else None,
+        "Lambda0_m": Lambda0_m,
+        "store_bk_map": False,
+    }
+    if design_poling is not None:
+        payload["delta_k_bulk_design_rad_per_m"] = design_poling.delta_k_bulk_rad_per_m
+    return payload
+
+
+def _setup_simulation(config: dict[str, Any]) -> dict[str, Any]:
+    """Resolve config, material models, index functions, and cavity context."""
+    resolved = _resolve_crystal_config(config)
+    cfg = {**config, **resolved}
+    index_functions = _build_refractive_index_functions(
+        crystal_model=cfg["crystal_model"],
+        phase_matching_type=cfg["phase_matching_type"],
+        wavelength_p_m=cfg["wavelength_p_m"],
+        wavelength_s_m=cfg["wavelength_s_m"],
+        wavelength_i_m=cfg["wavelength_i_m"],
+    )
+    context = load_cavity_context_for_crystal(
+        cfg["geometry"],
+        cavity_output_path=cfg["cavity_output_path"],
+    )
+    return {
+        "cfg": cfg,
+        "context": context,
+        "index_functions": index_functions,
+        "phase_config": index_functions["phase_config"],
+        "d_eff_config": index_functions["d_eff_config"],
+    }
+
+
+def _compute_phase_matching_block(
+    *,
+    cfg: dict[str, Any],
+    context: CrystalContext,
+    phase_config: Any,
+    d_eff_config: Any,
+    index_functions: dict[str, Any],
+) -> dict[str, Any]:
+    """Compute poling design, the phase scan, and the phase-scan resonance diagnostic."""
+    n_p_of_T = index_functions["n_p_of_T"]
+    n_s_of_T = index_functions["n_s_of_T"]
+    n_i_of_T = index_functions["n_i_of_T"]
+    n_p_of_lambda_T = index_functions["n_p_of_lambda_T"]
+    n_s_of_lambda_T = index_functions["n_s_of_lambda_T"]
+    n_i_of_lambda_T = index_functions["n_i_of_lambda_T"]
+
+    phase_matching_mode = str(cfg["phase_matching_mode"]).strip().lower()
+    if phase_matching_mode == "design":
+        design_poling = compute_design_poling_period(
+            wavelength_p_m=cfg["wavelength_p_m"],
+            wavelength_s_m=cfg["wavelength_s_m"],
+            wavelength_i_m=cfg["wavelength_i_m"],
+            temperature_K=cfg["design_temperature_K"],
+            n_p_of_lambda_T=n_p_of_lambda_T,
+            n_s_of_lambda_T=n_s_of_lambda_T,
+            n_i_of_lambda_T=n_i_of_lambda_T,
+            qpm_order_m=cfg["qpm_order_m"],
+        )
+        Lambda0_m = float(design_poling.Lambda0_design_m)
+    elif phase_matching_mode == "analysis":
+        design_poling = None
+        Lambda0_m = float(cfg["analysis_lambda0_m"])
+    else:
+        raise ValueError(f"Unknown PHASE_MATCHING_MODE: {cfg['phase_matching_mode']}")
+
+    phase = compute_crystal_phase_matching(
+        context,
+        n_p_of_T=n_p_of_T,
+        n_s_of_T=n_s_of_T,
+        n_i_of_T=n_i_of_T,
+        wavelength_p_m=cfg["wavelength_p_m"],
+        wavelength_s_m=cfg["wavelength_s_m"],
+        wavelength_i_m=cfg["wavelength_i_m"],
+        Lambda0_m=Lambda0_m,
+        T_min_K=cfg["T_min_K"],
+        T_max_K=cfg["T_max_K"],
+        n_T=cfg["n_T"],
+        T0_K=cfg["T0_K"],
+        alpha_perK=cfg["alpha_perK"],
+        qpm_order_m=cfg["qpm_order_m"],
+    )
+    phase.update(
+        {
+            "phase_matching_type": phase_config.phase_matching_type,
+            "pump_axis": phase_config.pump_axis,
+            "signal_axis": phase_config.signal_axis,
+            "idler_axis": phase_config.idler_axis,
+            "d_eff_pm_per_V": d_eff_config.d_eff_pm_per_V,
+            "d_eff_notes": list(d_eff_config.notes),
+        }
+    )
+
+    phase_matching_temperature_K = float(phase["T_best_K"][0])
+    phase_matching_resonance_diagnostic = compute_polarization_resonance_diagnostic(
+        cavity_data=context.cavity_data,
+        temperature_K=phase_matching_temperature_K,
+        signal_axis=phase_config.signal_axis,
+        idler_axis=phase_config.idler_axis,
+        wavelength_s_m=cfg["wavelength_s_m"],
+        wavelength_i_m=cfg["wavelength_i_m"],
+        n_s_of_lambda_T=n_s_of_lambda_T,
+        n_i_of_lambda_T=n_i_of_lambda_T,
+    )
+    return {
+        "Lambda0_m": Lambda0_m,
+        "design_poling": design_poling,
+        "phase": phase,
+        "phase_matching_resonance_diagnostic": phase_matching_resonance_diagnostic,
+    }
+
+
+def _compute_operating_point_block(
+    *,
+    cfg: dict[str, Any],
+    context: CrystalContext,
+    phase_config: Any,
+    d_eff_config: Any,
+    index_functions: dict[str, Any],
+    Lambda0_m: float,
+    phase: dict[str, Any],
+    phase_matching_resonance_diagnostic: dict[str, Any],
+) -> dict[str, Any]:
+    """Compute double resonance, select the active operating point, and evaluate it."""
+    n_p_of_T = index_functions["n_p_of_T"]
+    n_s_of_T = index_functions["n_s_of_T"]
+    n_i_of_T = index_functions["n_i_of_T"]
+    n_s_of_lambda_T = index_functions["n_s_of_lambda_T"]
+    n_i_of_lambda_T = index_functions["n_i_of_lambda_T"]
+
+    double_resonance_scan = None
+    if cfg["enable_double_resonance_scan"]:
+        double_resonance_scan = compute_double_resonance_scan(
+            cavity_data=context.cavity_data,
+            signal_axis=phase_config.signal_axis,
+            idler_axis=phase_config.idler_axis,
+            wavelength_s_m=cfg["wavelength_s_m"],
+            wavelength_i_m=cfg["wavelength_i_m"],
+            n_s_of_lambda_T=n_s_of_lambda_T,
+            n_i_of_lambda_T=n_i_of_lambda_T,
+            temperature_min_K=cfg["double_resonance_t_min_K"],
+            temperature_max_K=cfg["double_resonance_t_max_K"],
+            n_temperature=cfg["double_resonance_n_T"],
+            crystal_length_min_m=cfg["double_resonance_l_min_m"],
+            crystal_length_max_m=cfg["double_resonance_l_max_m"],
+            n_crystal_length=cfg["double_resonance_n_L"],
+        )
+
+    # 6. Operating-point selection
+    phase_matching_operating_point = build_phase_matching_operating_point(
+        phase_matching=phase,
+        resonance_diagnostic=phase_matching_resonance_diagnostic,
+    )
+    double_resonance_operating_point = build_double_resonance_operating_point(double_resonance_scan)
+    selected_operating_point = select_crystal_operating_point(
+        cfg["operating_point_mode"],
+        phase_matching_operating_point=phase_matching_operating_point,
+        double_resonance_operating_point=double_resonance_operating_point,
+    )
+    active_operating_temperature_K = float(selected_operating_point["temperature_K"])
+
+    active_polarization_resonance = compute_polarization_resonance_diagnostic(
+        cavity_data=context.cavity_data,
+        temperature_K=active_operating_temperature_K,
+        signal_axis=phase_config.signal_axis,
+        idler_axis=phase_config.idler_axis,
+        wavelength_s_m=cfg["wavelength_s_m"],
+        wavelength_i_m=cfg["wavelength_i_m"],
+        n_s_of_lambda_T=n_s_of_lambda_T,
+        n_i_of_lambda_T=n_i_of_lambda_T,
+    )
+    phase_active = compute_crystal_phase_matching_at_temperature(
+        context,
+        n_p_of_T=n_p_of_T,
+        n_s_of_T=n_s_of_T,
+        n_i_of_T=n_i_of_T,
+        wavelength_p_m=cfg["wavelength_p_m"],
+        wavelength_s_m=cfg["wavelength_s_m"],
+        wavelength_i_m=cfg["wavelength_i_m"],
+        Lambda0_m=Lambda0_m,
+        temperature_K=active_operating_temperature_K,
+        T0_K=cfg["T0_K"],
+        alpha_perK=cfg["alpha_perK"],
+        qpm_order_m=cfg["qpm_order_m"],
+    )
+    phase_active.update(
+        {
+            "phase_matching_type": phase_config.phase_matching_type,
+            "pump_axis": phase_config.pump_axis,
+            "signal_axis": phase_config.signal_axis,
+            "idler_axis": phase_config.idler_axis,
+            "d_eff_pm_per_V": d_eff_config.d_eff_pm_per_V,
+            "d_eff_notes": list(d_eff_config.notes),
+        }
+    )
+    return {
+        "double_resonance_scan": double_resonance_scan,
+        "phase_matching_operating_point": phase_matching_operating_point,
+        "double_resonance_operating_point": double_resonance_operating_point,
+        "selected_operating_point": selected_operating_point,
+        "active_operating_temperature_K": active_operating_temperature_K,
+        "active_polarization_resonance": active_polarization_resonance,
+        "phase_active": phase_active,
+    }
+
+
+def _compute_physics_block(
+    *,
+    cfg: dict[str, Any],
+    context: CrystalContext,
+    index_functions: dict[str, Any],
+    phase_active: dict[str, Any],
+    active_operating_temperature_K: float,
+    Lambda0_m: float,
+) -> dict[str, Any]:
+    """Compute mode matching and Boyd-Kleinman analysis at the active operating point."""
+    n_p_of_T = index_functions["n_p_of_T"]
+    n_s_of_T = index_functions["n_s_of_T"]
+    n_i_of_T = index_functions["n_i_of_T"]
+    n_p_of_lambda_T = index_functions["n_p_of_lambda_T"]
+    n_s_of_lambda_T = index_functions["n_s_of_lambda_T"]
+    n_i_of_lambda_T = index_functions["n_i_of_lambda_T"]
+
+    mode_matching_n_crystal = float(
+        index_functions["signal_axis_model"](
+            cfg["wavelength_s_m"],
+            active_operating_temperature_K,
+        )
+    )
+    mode = compute_crystal_mode_matching(
+        context,
+        n_crystal=mode_matching_n_crystal,
+    )
+    bk_data = compute_boyd_kleinman_analysis(
+        context=context,
+        phase_matching=phase_active,
+        mode_matching=mode,
+        n_p_of_T=n_p_of_T,
+        n_s_of_T=n_s_of_T,
+        n_i_of_T=n_i_of_T,
+        n_p_of_lambda_T=n_p_of_lambda_T,
+        n_s_of_lambda_T=n_s_of_lambda_T,
+        n_i_of_lambda_T=n_i_of_lambda_T,
+        wavelength_p_m=cfg["wavelength_p_m"],
+        wavelength_s_m=cfg["wavelength_s_m"],
+        wavelength_i_m=cfg["wavelength_i_m"],
+        Lambda0_m=Lambda0_m,
+        n_T=cfg["n_T"],
+        T0_K=cfg["T0_K"],
+        alpha_perK=cfg["alpha_perK"],
+        qpm_order_m=cfg["qpm_order_m"],
+    )
+    return {
+        "mode": mode,
+        "mode_matching_n_crystal": mode_matching_n_crystal,
+        "bk_data": bk_data,
+    }
+
+
+def _build_result_from_blocks(
+    *,
+    setup: dict[str, Any],
+    phase_block: dict[str, Any],
+    operating_block: dict[str, Any],
+    physics_block: dict[str, Any],
+) -> CrystalSimulationResult:
+    cfg = setup["cfg"]
+    return build_crystal_simulation_result(
+        context=setup["context"],
+        phase_matching=phase_block["phase"],
+        mode_matching=physics_block["mode"],
+        selected_operating_phase_matching=operating_block["phase_active"],
+        phase_matching_operating_point=operating_block["phase_matching_operating_point"],
+        double_resonance_operating_point=operating_block["double_resonance_operating_point"],
+        selected_operating_point_mode=cfg["operating_point_mode"],
+        selected_operating_point=operating_block["selected_operating_point"],
+        polarization_resonance=phase_block["phase_matching_resonance_diagnostic"],
+        active_polarization_resonance=operating_block["active_polarization_resonance"],
+        double_resonance_scan=operating_block["double_resonance_scan"],
+        bk_analysis=physics_block["bk_data"],
+        simulation_inputs=_build_simulation_inputs_payload(
+            crystal_model=cfg["crystal_model"],
+            mode_matching_n_crystal=physics_block["mode_matching_n_crystal"],
+            phase_matching_mode=cfg["phase_matching_mode"],
+            phase_config=setup["phase_config"],
+            d_eff_config=setup["d_eff_config"],
+            operating_point_mode=cfg["operating_point_mode"],
+            design_temperature_K=cfg["design_temperature_K"],
+            Lambda0_m=phase_block["Lambda0_m"],
+            design_poling=phase_block["design_poling"],
+        ),
+    )
+
+
+def run_crystal_simulation(config: dict[str, Any]) -> CrystalSimulationResult:
+    """Run the crystal workflow end-to-end from a small entry-point config."""
+    cfg = _merge_defaults(config)
+    setup = _setup_simulation(cfg)
+
+    phase_block = _compute_phase_matching_block(
+        cfg=setup["cfg"],
+        context=setup["context"],
+        phase_config=setup["phase_config"],
+        d_eff_config=setup["d_eff_config"],
+        index_functions=setup["index_functions"],
+    )
+    operating_block = _compute_operating_point_block(
+        cfg=setup["cfg"],
+        context=setup["context"],
+        phase_config=setup["phase_config"],
+        d_eff_config=setup["d_eff_config"],
+        index_functions=setup["index_functions"],
+        Lambda0_m=phase_block["Lambda0_m"],
+        phase=phase_block["phase"],
+        phase_matching_resonance_diagnostic=phase_block["phase_matching_resonance_diagnostic"],
+    )
+    physics_block = _compute_physics_block(
+        cfg=setup["cfg"],
+        context=setup["context"],
+        index_functions=setup["index_functions"],
+        phase_active=operating_block["phase_active"],
+        active_operating_temperature_K=operating_block["active_operating_temperature_K"],
+        Lambda0_m=phase_block["Lambda0_m"],
+    )
+    return _build_result_from_blocks(
+        setup=setup,
+        phase_block=phase_block,
+        operating_block=operating_block,
+        physics_block=physics_block,
+    )
+
+
+def setup_crystal_simulation(config: dict[str, Any]) -> dict[str, Any]:
+    """Set up one crystal simulation, merging internal workflow defaults once."""
+    return _setup_simulation(_merge_defaults(config))
+
+
+compute_crystal_phase_matching_block = _compute_phase_matching_block
+compute_crystal_operating_point_block = _compute_operating_point_block
+compute_crystal_physics_block = _compute_physics_block
+build_crystal_simulation_result_from_blocks = _build_result_from_blocks
 
 
 def print_crystal_summary(result: CrystalSimulationResult) -> None:
@@ -427,7 +990,9 @@ def print_crystal_summary(result: CrystalSimulationResult) -> None:
         print(f"Selected operating point mode: {result.selected_operating_point_mode}")
     if result.selected_operating_point is not None:
         print(f"Active operating temperature: {float(result.selected_operating_point['temperature_K']):.3f} K")
-        active_crystal_length_m = float(result.selected_operating_point.get("crystal_length_m", result.context.crystal_length_m))
+        active_crystal_length_m = float(
+            result.selected_operating_point.get("crystal_length_m", result.context.crystal_length_m)
+        )
         if abs(active_crystal_length_m - float(result.context.crystal_length_m)) > _CRYSTAL_LENGTH_MATCH_TOLERANCE_M:
             print(
                 "Selected crystal length differs from loaded cavity geometry; "
@@ -579,7 +1144,10 @@ def _build_active_for_opo_payload(
                     "idler_axis",
                     "d_eff_pm_per_V",
                 )
-                if result.selected_operating_phase_matching is not None and key in result.selected_operating_phase_matching
+                if (
+                    result.selected_operating_phase_matching is not None
+                    and key in result.selected_operating_phase_matching
+                )
             }
             if result.selected_operating_phase_matching is not None
             else None
@@ -686,11 +1254,14 @@ def build_crystal_simulation_output(
     store_bk_map: bool = False,
 ) -> dict[str, Any]:
     """Build JSON-serializable crystal simulation output."""
+    inputs = {
+        "geometry": result.context.geometry,
+        **_build_crystal_inputs_payload(result.context),
+    }
+    if result.simulation_inputs:
+        inputs.update(result.simulation_inputs)
     output = {
-        "inputs": {
-            "geometry": result.context.geometry,
-            **_build_crystal_inputs_payload(result.context),
-        },
+        "inputs": inputs,
         "results": _build_crystal_results_payload(
             result,
             store_bk_map=store_bk_map,
@@ -782,12 +1353,19 @@ __all__ = [
     "CrystalSimulationResult",
     "load_cavity_context_for_crystal",
     "compute_crystal_phase_matching",
+    "compute_crystal_phase_matching_at_temperature",
     "compute_design_poling_period",
     "compute_crystal_mode_matching",
     "compute_boyd_kleinman_analysis",
     "build_phase_matching_operating_point",
     "build_double_resonance_operating_point",
     "select_crystal_operating_point",
+    "setup_crystal_simulation",
+    "compute_crystal_phase_matching_block",
+    "compute_crystal_operating_point_block",
+    "compute_crystal_physics_block",
+    "build_crystal_simulation_result_from_blocks",
+    "run_crystal_simulation",
     "build_crystal_simulation_result",
     "build_crystal_simulation_output",
     "print_crystal_summary",

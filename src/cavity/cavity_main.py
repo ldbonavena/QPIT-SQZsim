@@ -50,39 +50,46 @@ GEOMETRY = "bowtie"
 # %% Select parameters
 
 # Crystal parameters
-CRYSTAL_LENGTH_M = 16e-3
-N_CRYSTAL = 1.78
+CRYSTAL_LENGTH_M = 16e-3     # Crystal length [m]
+N_CRYSTAL = 1.78             # Crystal refractive index
 
-ROC_1_M = 50e-3
-ROC_2_M = 50e-3
-WAVELENGTH_M = 1550e-9
+ROC_1_M = 50e-3              # Mirror/surface 1 RoC [m]
+ROC_2_M = 50e-3              # Mirror/surface 2 RoC [m]
+WAVELENGTH_M = 1550e-9       # Signal/Idler wavelength [m]
 
-# Resonant-field cavity loss model:
-# R1_RESONANT is the non-output mirror/facet reflectivity and any transmission
-# through it is treated as internal cavity loss. R2_RESONANT defines the output
-# coupling. Distributed loss and parasitic round-trip loss remain internal.
-R1_RESONANT = 0.999
-R2_RESONANT = 0.954
-ALPHA_RESONANT_PER_M = 0.0
-L_PARASITIC_RT = 0.0
-DETUNING_HZ = 0.0
+# Resonant-field cavity losses parameters
+R1_RESONANT = 0.999      # It is the input mirror/facet reflectivity and any transmission through it is treated as internal cavity loss
+R2_RESONANT = 0.954      # It defines the output mirror
 
-# Bow-tie parameters
-THETA_AOI_RAD = 6 * DEG_TO_RAD
+ALPHA_RESONANT_PER_M = 0.0     # Distributed losses along the cavity, such as absorption in the crystal or air. Here it is set to zero to isolate the effect of mirror coupling
+L_PARASITIC_RT = 0.0           # Parasitic round-trip loss accounts for additional losses such as scattering or imperfect coatings. It is set to zero in this configuration to model an ideal cavity
+DETUNING_HZ = 0.0              # The detuning is set to zero, meaning that the cavity is evaluated exactly at resonance, where the intracavity field is maximized
+
+
+# Bowtie parameters
+THETA_AOI_RAD = 6 * DEG_TO_RAD    # Aoi [deg]
 SHORT_AXIS_SCAN_M = np.arange(56e-3, 71e-3, 0.01e-3)
 LONG_AXIS_SCAN_M = np.arange(70e-3, 120e-3, 0.5e-3)
 MESH_SHORT_AXIS_M, MESH_LONG_AXIS_M = np.meshgrid(SHORT_AXIS_SCAN_M, LONG_AXIS_SCAN_M)
 
 # Linear parameters
-L_CAV_M = 50e-3
+L_CAV_M = 50e-3   # Cavity length (crystal included)
 
 # Hemilithic parameters
-L_AIR_M = 20e-3
+L_AIR_M = 20e-3   # Air section length (Cavity length = CRYSTAL_LENGTH_M + L_AIR_M)
 
 # Triangle parameters
 TRIANGLE_WIDTH_SCAN_M = np.arange(max(CRYSTAL_LENGTH_M + 1e-3, 40e-3), 140e-3, 0.5e-3)
 TRIANGLE_HEIGHT_SCAN_M = np.arange(10e-3, 80e-3, 0.5e-3)
 MESH_TRIANGLE_WIDTH_M, MESH_TRIANGLE_HEIGHT_M = np.meshgrid(TRIANGLE_WIDTH_SCAN_M, TRIANGLE_HEIGHT_SCAN_M)
+
+# %%
+# Geometry info
+
+print_geometry_info(GEOMETRY)
+
+# %%
+# Geometry-dependent estimators
 
 PARAMETERS = {
     "crystal_length_m": CRYSTAL_LENGTH_M,
@@ -103,14 +110,6 @@ PARAMETERS = {
     "mesh_triangle_width_m": MESH_TRIANGLE_WIDTH_M,
     "mesh_triangle_height_m": MESH_TRIANGLE_HEIGHT_M,
 }
-
-# %%
-# Geometry info
-
-print_geometry_info(GEOMETRY)
-
-# %%
-# Geometry-dependent estimators
 
 estimators = build_geometry_estimators(GEOMETRY, PARAMETERS)
 context = build_cavity_context(GEOMETRY, PARAMETERS, estimators=estimators)
