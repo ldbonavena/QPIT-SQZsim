@@ -50,41 +50,46 @@ except ImportError:
 
 
 # %%
-# Simulation configuration
+# Simulation parameters
 
-GEOMETRY = "monolithic"
+GEOMETRY = "bowtie"  # Cavity geometry used to load upstream cavity/crystal results.
 
-CAVITY_OUTPUT_PATH = None
-CRYSTAL_OUTPUT_PATH = None
-SAVE_OUTPUTS = True
+# Below-threshold degenerate OPO operating point.
+PUMP_POWER_W = 2e-3        # Pump power coupled into the OPO [W].
+THRESHOLD_POWER_W = 100e-3 # Oscillation threshold power [W].
+WAVELENGTH_P_M = 775e-9    # Pump wavelength [m].
+WAVELENGTH_S_M = 1550e-9   # Signal wavelength [m].
+WAVELENGTH_I_M = 1550e-9   # Idler wavelength [m].
 
-# Minimal below-threshold degenerate OPO configuration.
-OPO_CONFIG = {
-    "pump_power_W": 2e-3,
-    "threshold_power_W": 100e-3,
-    "signal_wavelength_m": 1540e-9,
-    "pump_wavelength_m": 775e-9,
-    "analysis_sideband_Hz": 5e6,
-    "analysis_span_Hz": (1e5, 20e6),
-    "n_analysis_points": 400,
-    "detection_efficiency": 0.86,
-    "lo_phase_rad": 1.0,
-}
+# Homodyne / squeezing-spectrum analysis settings.
+ANALYSIS_SIDEBAND_HZ = 5e6        # Representative analysis sideband frequency [Hz].
+ANALYSIS_SPAN_HZ = (1e5, 20e6)    # Frequency span for the squeezing spectrum [Hz].
+N_ANALYSIS_POINTS = 400           # Number of frequency samples in the spectrum.
+DETECTION_EFFICIENCY = 0.86       # Total detection efficiency, including propagation and detector losses.
+LO_PHASE_RAD = 1.0                # Homodyne local-oscillator phase [rad].
 
 
 # %%
 # Load upstream simulation outputs
 
-context = load_opo_context(
-    GEOMETRY,
-    cavity_output_path=CAVITY_OUTPUT_PATH,
-    crystal_output_path=CRYSTAL_OUTPUT_PATH,
-)
+context = load_opo_context(GEOMETRY)
 
 
 # %%
 # Build OPO model
 
+OPO_CONFIG = {
+    "pump_power_W": PUMP_POWER_W,
+    "threshold_power_W": THRESHOLD_POWER_W,
+    "wavelength_p_m": WAVELENGTH_P_M,
+    "wavelength_s_m": WAVELENGTH_S_M,
+    "wavelength_i_m": WAVELENGTH_I_M,
+    "analysis_sideband_Hz": ANALYSIS_SIDEBAND_HZ,
+    "analysis_span_Hz": ANALYSIS_SPAN_HZ,
+    "n_analysis_points": N_ANALYSIS_POINTS,
+    "detection_efficiency": DETECTION_EFFICIENCY,
+    "lo_phase_rad": LO_PHASE_RAD,
+}
 parameters, model = compute_opo_model(context, OPO_CONFIG)
 
 
@@ -138,17 +143,15 @@ fig_resonance_diagnostic = plot_opo_resonance_diagnostic(
 # %%
 # Save outputs
 
-outputs_info = None
-if SAVE_OUTPUTS:
-    outputs_info = save_opo_outputs(
-        GEOMETRY,
-        output,
-        fig_spectrum,
-        fig_resonance_diagnostic=fig_resonance_diagnostic,
-    )
-    print(f"Saved OPO output to: {outputs_info['opo_output_json']}")
-    print(f"Saved OPO spectrum plot to: {outputs_info['opo_squeezing_spectrum_png']}")
-    if "opo_resonance_diagnostic_png" in outputs_info:
-        print(f"Saved OPO resonance diagnostic plot to: {outputs_info['opo_resonance_diagnostic_png']}")
+outputs_info = save_opo_outputs(
+    GEOMETRY,
+    output,
+    fig_spectrum,
+    fig_resonance_diagnostic=fig_resonance_diagnostic,
+)
+print(f"Saved OPO output to: {outputs_info['opo_output_json']}")
+print(f"Saved OPO spectrum plot to: {outputs_info['opo_squeezing_spectrum_png']}")
+if "opo_resonance_diagnostic_png" in outputs_info:
+    print(f"Saved OPO resonance diagnostic plot to: {outputs_info['opo_resonance_diagnostic_png']}")
 
 # %%

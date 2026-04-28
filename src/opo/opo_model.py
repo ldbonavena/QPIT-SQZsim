@@ -131,11 +131,18 @@ def _validate_crystal_length_consistency(
 
 def build_opo_parameters(config: dict[str, Any]) -> OPOParameters:
     """Build a validated OPO parameter object from a plain configuration mapping."""
+    signal_wavelength_m = config.get("wavelength_s_m", config.get("signal_wavelength_m"))
+    pump_wavelength_m = config.get("wavelength_p_m", config.get("pump_wavelength_m"))
+    if signal_wavelength_m is None:
+        raise KeyError("Missing OPO signal wavelength: expected 'wavelength_s_m'.")
+    if pump_wavelength_m is None:
+        raise KeyError("Missing OPO pump wavelength: expected 'wavelength_p_m'.")
+
     return OPOParameters(
         pump_power_W=float(config["pump_power_W"]),
         threshold_power_W=float(config["threshold_power_W"]),
-        signal_wavelength_m=float(config["signal_wavelength_m"]),
-        pump_wavelength_m=float(config["pump_wavelength_m"]),
+        signal_wavelength_m=float(signal_wavelength_m),
+        pump_wavelength_m=float(pump_wavelength_m),
         analysis_sideband_Hz=float(config["analysis_sideband_Hz"]),
         analysis_span_Hz=tuple(float(v) for v in config["analysis_span_Hz"]),
         n_analysis_points=int(config["n_analysis_points"]),

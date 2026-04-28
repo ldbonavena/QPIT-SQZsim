@@ -88,6 +88,7 @@ class CrystalSimulationResult:
     double_resonance_scan: dict[str, Any] | None = None
     bk_analysis: dict[str, Any] | None = None
     simulation_inputs: dict[str, Any] | None = None
+    qpm_order_m: int | None = None
 
 
 def _load_cavity_output_data(path: str | Path) -> dict[str, Any]:
@@ -344,6 +345,7 @@ def build_crystal_simulation_result(
     double_resonance_scan: dict[str, Any] | None = None,
     bk_analysis: dict[str, Any] | None = None,
     simulation_inputs: dict[str, Any] | None = None,
+    qpm_order_m: int | None = None,
 ) -> CrystalSimulationResult:
     """Build the structured crystal workflow result."""
     return CrystalSimulationResult(
@@ -360,6 +362,7 @@ def build_crystal_simulation_result(
         double_resonance_scan=double_resonance_scan,
         bk_analysis=bk_analysis,
         simulation_inputs=simulation_inputs,
+        qpm_order_m=qpm_order_m,
     )
 
 
@@ -707,6 +710,9 @@ def _compute_operating_point_block(
 
     double_resonance_scan = None
     if cfg["enable_double_resonance_scan"]:
+        crystal_length_min_m = 0.8 * float(context.crystal_length_m)
+        crystal_length_max_m = 1.2 * float(context.crystal_length_m)
+
         double_resonance_scan = compute_double_resonance_scan(
             cavity_data=context.cavity_data,
             signal_axis=phase_config.signal_axis,
@@ -718,8 +724,8 @@ def _compute_operating_point_block(
             temperature_min_K=cfg["double_resonance_t_min_K"],
             temperature_max_K=cfg["double_resonance_t_max_K"],
             n_temperature=cfg["double_resonance_n_T"],
-            crystal_length_min_m=cfg["double_resonance_l_min_m"],
-            crystal_length_max_m=cfg["double_resonance_l_max_m"],
+            crystal_length_min_m=crystal_length_min_m,
+            crystal_length_max_m=crystal_length_max_m,
             n_crystal_length=cfg["double_resonance_n_L"],
         )
 
@@ -855,6 +861,7 @@ def _build_result_from_blocks(
         active_polarization_resonance=operating_block["active_polarization_resonance"],
         double_resonance_scan=operating_block["double_resonance_scan"],
         bk_analysis=physics_block["bk_data"],
+        qpm_order_m=cfg["qpm_order_m"],
         simulation_inputs=_build_simulation_inputs_payload(
             crystal_model=cfg["crystal_model"],
             mode_matching_n_crystal=physics_block["mode_matching_n_crystal"],
@@ -929,6 +936,23 @@ def print_crystal_summary(result: CrystalSimulationResult) -> None:
     print("Crystal simulation summary")
     print("-------------------------")
     print(f"Geometry: {result.context.geometry}")
+    simulation_inputs = result.simulation_inputs or {}
+    phase_matching_mode = simulation_inputs.get("phase_matching_mode")
+    Lambda0_m = simulation_inputs.get("Lambda0_m")
+    if phase_matching_mode is not None:
+        print(f"Phase-matching mode: {phase_matching_mode}")
+        if Lambda0_m is not None:
+            Lambda0_m = float(Lambda0_m)
+            Lambda0_um = Lambda0_m * 1e6
+            if str(phase_matching_mode).strip().lower() == "design":
+                print(f"Designed QPM poling period Lambda0: {Lambda0_um:.6f} um ({Lambda0_m:.6e} m)")
+            else:
+                print(f"Fixed input poling period Lambda0: {Lambda0_um:.6f} um ({Lambda0_m:.6e} m)")
+        design_temperature_K = simulation_inputs.get("design_temperature_K")
+        if design_temperature_K is not None:
+            print(f"Design temperature: {float(design_temperature_K):.3f} K")
+        if result.qpm_order_m is not None:
+            print(f"QPM order: {int(result.qpm_order_m)}")
     phase_matching_type = phase.get("phase_matching_type")
     pump_axis = phase.get("pump_axis")
     signal_axis = phase.get("signal_axis")
@@ -971,18 +995,14 @@ def print_crystal_summary(result: CrystalSimulationResult) -> None:
         )
         print(f"  double resonant: {bool(phase_matching_operating_point['is_double_resonant'])}")
 
-    double_resonance_operating_point = result.double_resonance_operating_point
-    if double_resonance_operating_point is not None:
+    if result.double_resonance_operating_point is not None:
+        double_resonance_operating_point = result.double_resonance_operating_point
         print("Double-resonance operating point:")
         print(f"  temperature: {float(double_resonance_operating_point['temperature_K']):.3f} K")
         print(f"  crystal length: {float(double_resonance_operating_point['crystal_length_m']) * 1e3:.3f} mm")
         print(
             f"  wrapped phase mismatch: "
             f"{float(double_resonance_operating_point['wrapped_phase_mismatch_rad']):.6e} rad"
-        )
-        print(
-            f"  |wrapped phase mismatch|: "
-            f"{float(double_resonance_operating_point['abs_wrapped_phase_mismatch_rad']):.6e} rad"
         )
         print(f"  double resonant: {bool(double_resonance_operating_point['is_double_resonant'])}")
 
@@ -1127,41 +1147,26 @@ def _build_active_for_opo_payload(
         "operating_point_mode": result.selected_operating_point_mode,
         "temperature_K": float(selected_operating_point.get("temperature_K", np.nan)),
         "crystal_length_m": active_crystal_length_m,
-        "phase_matching": (
+        "mode_matching": {
+            "waist_crystal_m": float(result.mode_matching.waist_crystal_m),
+            "effective_nonlinear_overlap": float(result.mode_matching.effective_nonlinear_overlap),
+        },
+        "polarization_resonance": (
             {
-                key: result.selected_operating_phase_matching[key]
+                key: result.active_polarization_resonance[key]
                 for key in (
-                    "T_K",
-                    "n_p",
-                    "n_s",
-                    "n_i",
-                    "delta_k_rad_per_m",
-                    "delta_k_eff_rad_per_m",
-                    "pm_power",
-                    "phase_matching_type",
-                    "pump_axis",
-                    "signal_axis",
-                    "idler_axis",
-                    "d_eff_pm_per_V",
+                    "fsr_signal_Hz",
+                    "fsr_idler_Hz",
+                    "delta_fsr_Hz",
+                    "delta_phi_wrapped_rad",
+                    "is_double_resonant",
+                    "signal_optical_roundtrip_length_m",
+                    "idler_optical_roundtrip_length_m",
                 )
-                if (
-                    result.selected_operating_phase_matching is not None
-                    and key in result.selected_operating_phase_matching
-                )
+                if result.active_polarization_resonance is not None and key in result.active_polarization_resonance
             }
-            if result.selected_operating_phase_matching is not None
+            if result.active_polarization_resonance is not None
             else None
-        ),
-        "mode_matching": _build_mode_matching_active_payload(result.mode_matching),
-        "boyd_kleinman_analysis": (
-            _build_bk_summary_payload(result.bk_analysis, store_bk_map=store_bk_map)
-            if result.bk_analysis is not None
-            else None
-        ),
-        "polarization_resonance": result.active_polarization_resonance,
-        "cavity_crystal_length_m": cavity_crystal_length_m,
-        "crystal_length_matches_cavity": bool(
-            abs(active_crystal_length_m - cavity_crystal_length_m) <= _CRYSTAL_LENGTH_MATCH_TOLERANCE_M
         ),
         "recommended_cavity_crystal_length_m": active_crystal_length_m,
     }
@@ -1174,18 +1179,6 @@ def _build_crystal_results_payload(
     store_bk_map: bool,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {}
-    if result.selected_operating_point_mode is not None:
-        payload["selected_operating_point_mode"] = result.selected_operating_point_mode
-    if result.selected_operating_point is not None:
-        payload["selected_operating_point"] = result.selected_operating_point
-    payload["mode_matching"] = _build_mode_matching_payload(result.mode_matching)
-    if result.bk_analysis is not None:
-        payload["boyd_kleinman_analysis"] = _build_bk_summary_payload(
-            result.bk_analysis,
-            store_bk_map=store_bk_map,
-        )
-    if result.active_polarization_resonance is not None:
-        payload["polarization_resonance"] = result.active_polarization_resonance
     active_for_opo = _build_active_for_opo_payload(result, store_bk_map=store_bk_map)
     if active_for_opo is not None:
         payload["active_for_opo"] = active_for_opo
@@ -1254,12 +1247,10 @@ def build_crystal_simulation_output(
     store_bk_map: bool = False,
 ) -> dict[str, Any]:
     """Build JSON-serializable crystal simulation output."""
-    inputs = {
-        "geometry": result.context.geometry,
-        **_build_crystal_inputs_payload(result.context),
-    }
-    if result.simulation_inputs:
-        inputs.update(result.simulation_inputs)
+    simulation_inputs = result.simulation_inputs or {}
+    inputs = {}
+    if "d_eff_pm_per_V" in simulation_inputs:
+        inputs["d_eff_pm_per_V"] = simulation_inputs["d_eff_pm_per_V"]
     output = {
         "inputs": inputs,
         "results": _build_crystal_results_payload(

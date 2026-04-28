@@ -47,7 +47,7 @@ except ImportError:
 # %%
 # Simulation configuration
 
-GEOMETRY = "monolithic"  # Cavity geometry used to load upstream cavity results.
+GEOMETRY = "bowtie"  # Cavity geometry used to load upstream cavity results.
 CRYSTAL_MODEL = "Kato2002"  # Choices: "Kato2002", "Fan1987", "Konig2004"
 
 WAVELENGTH_P_M = 775e-9   # Pump wavelength [m]
@@ -56,20 +56,21 @@ WAVELENGTH_I_M = 1550e-9  # Idler wavelength [m]
 
 PHASE_MATCHING_MODE = "design"  # "design" or "analysis"
 PHASE_MATCHING_TYPE = "type_II"  # allowed: "type_0", "type_I", "type_II"
-DESIGN_TEMPERATURE_K = 317.725
+DESIGN_TEMPERATURE_K = 317
 ANALYSIS_LAMBDA0_M = 27.7e-6  # Poling period Lambda [m]
+# 10.818391e-6 for analysis test
 
 T_MIN_K = 300.0  # Minimum temperature of the phase-matching scan [K]
 T_MAX_K = 340.0  # Maximum temperature of the phase-matching scan [K]
 N_T = 401        # Number of temperature points in the scan
 
 T0_K = 293.15         # Reference temperature [K] for thermo-optic / thermal-expansion models
-ALPHA_PER_K = 6.7e-6  # Approximate linear thermal expansion coefficient [1/K]
+ALPHA_PER_K = 6.7e-6  # Approximate crystal linear thermal expansion coefficient [1/K]
 QPM_ORDER_M = 1       # Quasi-phase-matching order m (m = 1 is first-order QPM)
 
 # Select crystal operating point used for downstream calculations.
 # "phase_matching" maximizes nonlinear conversion; "double_resonance" enforces signal/idler resonance.
-OPERATING_POINT_MODE = "double_resonance"
+OPERATING_POINT_MODE = "phase_matching"
 
 
 CONFIG = {
@@ -154,6 +155,8 @@ result = build_crystal_simulation_result_from_blocks(
 )
 print_crystal_summary(result)
 output = build_crystal_simulation_output(result)
+outputs_info = save_crystal_outputs(GEOMETRY, output)
+print(f"Saved crystal output JSON to: {outputs_info['crystal_output_json']}")
 
 
 # %%
@@ -204,8 +207,10 @@ outputs_info = save_crystal_outputs(
     fig_bk=fig_bk,
     fig_double_resonance_scan=fig_double_resonance,
 )
-print(f"Saved crystal output to: {outputs_info['crystal_output_json']}")
+print(f"Updated crystal output with plot metadata: {outputs_info['crystal_output_json']}")
 print(f"Saved BK master map to: {outputs_info['boyd_kleinman_master_map_png']}")
 print(f"Saved BK analysis plot to: {outputs_info['boyd_kleinman_analysis_png']}")
 if "double_resonance_scan_png" in outputs_info:
     print(f"Saved double-resonance scan plot to: {outputs_info['double_resonance_scan_png']}")
+
+# %%
