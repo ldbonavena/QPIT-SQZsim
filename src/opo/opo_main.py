@@ -55,7 +55,10 @@ except ImportError:
 GEOMETRY = "bowtie"  # Cavity geometry used to load upstream cavity/crystal results.
 
 # Below-threshold degenerate OPO operating point.
-PUMP_POWER_W = 0.2e-3      # Pump power coupled into the OPO [W].
+PUMP_MODE = "fraction"        # "fraction" uses sigma or percent threshold; "absolute" uses pump power [W].
+PUMP_PARAMETER_SIGMA = 0.1     # Pump parameter sigma = sqrt(P / P_threshold) [-].
+PUMP_PERCENT_THRESHOLD = 10.0  # Optional pump amplitude percentage of threshold [%]; sigma takes priority.
+PUMP_POWER_W = 0.2e-3          # Pump power coupled into the OPO [W], used only when PUMP_MODE = "absolute".
 PUMP_RESONANCE_MODEL = "single_pass"  # "single_pass" for non-resonant pump, "resonant" for cavity-enhanced pump.
 WAVELENGTH_P_M = 775e-9    # Pump wavelength [m].
 WAVELENGTH_S_M = 1550e-9   # Signal wavelength [m].
@@ -79,7 +82,7 @@ context = load_opo_context(GEOMETRY)
 # Build OPO model
 
 OPO_CONFIG = {
-    "pump_power_W": PUMP_POWER_W,
+    "pump_mode": PUMP_MODE,
     "pump_resonance_model": PUMP_RESONANCE_MODEL,
     "wavelength_p_m": WAVELENGTH_P_M,
     "wavelength_s_m": WAVELENGTH_S_M,
@@ -90,6 +93,13 @@ OPO_CONFIG = {
     "detection_efficiency": DETECTION_EFFICIENCY,
     "lo_phase_rad": LO_PHASE_RAD,
 }
+if PUMP_MODE == "fraction":
+    OPO_CONFIG["pump_parameter_sigma"] = PUMP_PARAMETER_SIGMA
+    OPO_CONFIG["pump_percent_threshold"] = PUMP_PERCENT_THRESHOLD
+elif PUMP_MODE == "absolute":
+    OPO_CONFIG["pump_power_W"] = PUMP_POWER_W
+else:
+    raise ValueError(f"Unsupported PUMP_MODE: {PUMP_MODE!r}")
 parameters, model = compute_opo_model(context, OPO_CONFIG)
 
 

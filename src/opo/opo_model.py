@@ -25,7 +25,10 @@ CRYSTAL_LENGTH_CONSISTENCY_TOLERANCE_M = 1e-9
 class OPOParameters:
     """User-facing OPO parameters for one workflow run."""
 
-    pump_power_W: float
+    pump_mode: str
+    pump_power_W: float | None
+    pump_parameter_sigma: float | None
+    pump_percent_threshold: float | None
     pump_resonance_model: str
     pump_input_coupling_efficiency: float | None
     signal_wavelength_m: float
@@ -51,6 +54,7 @@ class OPOModelResult:
     pump_resonance_model: str
     pump_buildup_factor: float
     pump_conversion_assumption: str
+    pump_mode: str
     pump_power_W: float
     threshold_model: str
     threshold_nonlinear_coupling: float
@@ -195,6 +199,38 @@ def _resolve_pump_resonance_model(value: Any) -> str:
     return model
 
 
+def _resolve_pump_mode(value: Any) -> str:
+    mode = str(value or "absolute").strip().lower()
+    if mode not in {"fraction", "absolute"}:
+        raise ValueError(f"pump_mode must be 'fraction' or 'absolute'; received {value!r}.")
+    return mode
+
+
+def _resolve_pump_operating_point(parameters: OPOParameters, threshold_power_W: float) -> tuple[float, float]:
+    threshold_power_W = _require_positive(threshold_power_W, "threshold_external_pump_power_W")
+    if parameters.pump_mode == "fraction":
+        if parameters.pump_power_W is not None:
+            raise ValueError("pump_power_W must not be provided when pump_mode='fraction'.")
+        if parameters.pump_parameter_sigma is not None:
+            pump_parameter = _require_positive(parameters.pump_parameter_sigma, "pump_parameter_sigma")
+        elif parameters.pump_percent_threshold is not None:
+            pump_parameter = _require_positive(parameters.pump_percent_threshold, "pump_percent_threshold") / 100.0
+        else:
+            raise ValueError(
+                "pump_mode='fraction' requires pump_parameter_sigma or pump_percent_threshold."
+            )
+        pump_power_W = pump_parameter**2 * threshold_power_W
+    else:
+        if parameters.pump_parameter_sigma is not None or parameters.pump_percent_threshold is not None:
+            raise ValueError(
+                "pump_parameter_sigma and pump_percent_threshold must not be provided when pump_mode='absolute'."
+            )
+        pump_power_W = _require_positive(parameters.pump_power_W, "pump_power_W")
+        pump_parameter = float(np.sqrt(pump_power_W / threshold_power_W))
+
+    return float(pump_power_W), float(pump_parameter)
+
+
 def compute_physical_opo_threshold_power(
     *,
     kappa_total_rad_s: float,
@@ -315,6 +351,29 @@ def compute_physical_opo_threshold_power(
 
 def build_opo_parameters(config: dict[str, Any]) -> OPOParameters:
     """Build a validated OPO parameter object from a plain configuration mapping."""
+    pump_mode = _resolve_pump_mode(config.get("pump_mode", "absolute"))
+    pump_power_W = (
+        _require_positive(config.get("pump_power_W"), "pump_power_W")
+        if config.get("pump_power_W") is not None
+        else None
+    )
+    pump_parameter_sigma = (
+        _require_positive(config.get("pump_parameter_sigma"), "pump_parameter_sigma")
+        if config.get("pump_parameter_sigma") is not None
+        else None
+    )
+    pump_percent_threshold = (
+        _require_positive(config.get("pump_percent_threshold"), "pump_percent_threshold")
+        if config.get("pump_percent_threshold") is not None
+        else None
+    )
+    if pump_mode == "fraction" and pump_power_W is not None:
+        raise ValueError("pump_power_W must not be provided when pump_mode='fraction'.")
+    if pump_mode == "absolute" and pump_power_W is None:
+        raise ValueError("pump_mode='absolute' requires pump_power_W.")
+    if pump_mode == "absolute" and (pump_parameter_sigma is not None or pump_percent_threshold is not None):
+        raise ValueError("Fractional pump inputs must not be provided when pump_mode='absolute'.")
+
     signal_wavelength_m = config.get("wavelength_s_m", config.get("signal_wavelength_m"))
     idler_wavelength_m = config.get("wavelength_i_m", signal_wavelength_m)
     pump_wavelength_m = config.get("wavelength_p_m", config.get("pump_wavelength_m"))
@@ -326,7 +385,10 @@ def build_opo_parameters(config: dict[str, Any]) -> OPOParameters:
         raise KeyError("Missing OPO pump wavelength: expected 'wavelength_p_m'.")
 
     return OPOParameters(
-        pump_power_W=_require_positive(config["pump_power_W"], "pump_power_W"),
+        pump_mode=pump_mode,
+        pump_power_W=pump_power_W,
+        pump_parameter_sigma=pump_parameter_sigma,
+        pump_percent_threshold=pump_percent_threshold,
         pump_resonance_model=_resolve_pump_resonance_model(config.get("pump_resonance_model", "single_pass")),
         pump_input_coupling_efficiency=(
             _require_positive(config.get("pump_input_coupling_efficiency"), "pump_input_coupling_efficiency")
@@ -422,7 +484,7 @@ def derive_opo_quantities(
         n_i=refractive_indices["n_i"],
     )
     effective_threshold_power_W = float(threshold["effective_threshold_power_W"])
-    pump_parameter = float(np.sqrt(parameters.pump_power_W / effective_threshold_power_W))
+    pump_power_W, pump_parameter = _resolve_pump_operating_point(parameters, effective_threshold_power_W)
 
     kappa_ext_Hz = float(kappa_ext_rad_s / TWO_PI) if kappa_ext_rad_s is not None else np.nan
     kappa_loss_Hz = float(kappa_loss_rad_s / TWO_PI) if kappa_loss_rad_s is not None else np.nan
@@ -436,6 +498,7 @@ def derive_opo_quantities(
         "Signal and idler use the simulated total resonant-field decay rate when separate signal/idler decay rates are not exported.",
         str(threshold["pump_conversion_assumption"]),
         "Pump parameter uses sigma = sqrt(P_pump_external / P_threshold_external).",
+        f"Pump mode: {parameters.pump_mode}.",
         f"Crystal operating point mode loaded from crystal workflow: {selected_operating_point_mode}.",
     ]
 
@@ -449,7 +512,8 @@ def derive_opo_quantities(
         pump_resonance_model=str(threshold["pump_resonance_model"]),
         pump_buildup_factor=float(threshold["pump_buildup_factor"]),
         pump_conversion_assumption=str(threshold["pump_conversion_assumption"]),
-        pump_power_W=float(parameters.pump_power_W),
+        pump_mode=parameters.pump_mode,
+        pump_power_W=float(pump_power_W),
         threshold_model="physical_first_principles",
         threshold_nonlinear_coupling=float(threshold["threshold_nonlinear_coupling"]),
         threshold_mode_area_m2=float(effective_mode_area_m2),
