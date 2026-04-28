@@ -55,8 +55,8 @@ except ImportError:
 GEOMETRY = "bowtie"  # Cavity geometry used to load upstream cavity/crystal results.
 
 # Below-threshold degenerate OPO operating point.
-PUMP_POWER_W = 2e-3        # Pump power coupled into the OPO [W].
-THRESHOLD_POWER_W = 100e-3 # Oscillation threshold power [W].
+PUMP_POWER_W = 0.2e-3      # Pump power coupled into the OPO [W].
+PUMP_RESONANCE_MODEL = "single_pass"  # "single_pass" for non-resonant pump, "resonant" for cavity-enhanced pump.
 WAVELENGTH_P_M = 775e-9    # Pump wavelength [m].
 WAVELENGTH_S_M = 1550e-9   # Signal wavelength [m].
 WAVELENGTH_I_M = 1550e-9   # Idler wavelength [m].
@@ -80,7 +80,7 @@ context = load_opo_context(GEOMETRY)
 
 OPO_CONFIG = {
     "pump_power_W": PUMP_POWER_W,
-    "threshold_power_W": THRESHOLD_POWER_W,
+    "pump_resonance_model": PUMP_RESONANCE_MODEL,
     "wavelength_p_m": WAVELENGTH_P_M,
     "wavelength_s_m": WAVELENGTH_S_M,
     "wavelength_i_m": WAVELENGTH_I_M,

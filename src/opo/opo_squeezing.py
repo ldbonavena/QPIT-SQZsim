@@ -88,7 +88,8 @@ def compute_squeezing_spectra(
     if sigma >= 1.0:
         raise ValueError(
             "compute_squeezing_spectra only supports the below-threshold model with sigma < 1. "
-            f"Received sigma={sigma:.6f}."
+            f"Received sigma={sigma:.6f} for pump power {model.pump_power_W:.6e} W and "
+            f"external threshold {model.effective_threshold_power_W:.6e} W."
         )
 
     eta_esc = float(np.clip(model.escape_efficiency, 0.0, 1.0))

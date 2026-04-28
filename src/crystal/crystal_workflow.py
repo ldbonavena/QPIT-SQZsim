@@ -1147,6 +1147,16 @@ def _build_active_for_opo_payload(
         "operating_point_mode": result.selected_operating_point_mode,
         "temperature_K": float(selected_operating_point.get("temperature_K", np.nan)),
         "crystal_length_m": active_crystal_length_m,
+        "refractive_indices": (
+            {
+                "n_p": float(np.asarray(result.selected_operating_phase_matching["n_p"], dtype=float).ravel()[0]),
+                "n_s": float(np.asarray(result.selected_operating_phase_matching["n_s"], dtype=float).ravel()[0]),
+                "n_i": float(np.asarray(result.selected_operating_phase_matching["n_i"], dtype=float).ravel()[0]),
+            }
+            if result.selected_operating_phase_matching is not None
+            and all(key in result.selected_operating_phase_matching for key in ("n_p", "n_s", "n_i"))
+            else None
+        ),
         "mode_matching": {
             "waist_crystal_m": float(result.mode_matching.waist_crystal_m),
             "effective_nonlinear_overlap": float(result.mode_matching.effective_nonlinear_overlap),
