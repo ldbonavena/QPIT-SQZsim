@@ -1,46 +1,34 @@
-# 00 — Overview
+# 00 - Overview
 
-This documentation describes the structure and usage of the QPIT-SQZsim simulator, a pipeline for modeling optical parametric oscillators:
+QPIT-SQZsim is organized as a staged simulator for an OPO system:
 
-cavity → crystal → OPO
+```text
+cavity -> crystal -> OPO
+```
 
-Start from this overview and follow the recommended reading order below.
+The stages are intentionally separated. The cavity stage defines the optical resonator, the crystal stage chooses the nonlinear operating point, and the OPO stage computes below-threshold squeezing from those upstream results.
 
-## Documentation Structure
+## Documentation Map
 
-The documentation is organized into two parts:
+- [01_architecture.md](01_architecture.md): module boundaries, responsibilities, and data flow.
+- [02_workflow.md](02_workflow.md): how to run the pipeline and when to rerun stages.
+- [03_physics.md](03_physics.md): physical models and assumptions.
+- [04_outputs.md](04_outputs.md): JSON files and downstream interfaces.
 
-- **Conceptual docs**: explain the overall pipeline and interfaces  
-- **Module docs**: describe each layer in detail (cavity, crystal, OPO)
+Module-specific pages:
 
-Top-level files provide the conceptual view.  
-`docs/modules/` contains layer-specific technical documentation.
+- [modules/cavity.md](modules/cavity.md)
+- [modules/crystal.md](modules/crystal.md)
+- [modules/opo.md](modules/opo.md)
 
-## Recommended Reading Order
+## Main Idea
 
-Follow this order to understand the project:
+Each stage writes a JSON file. Downstream stages read these files instead of recomputing upstream decisions. This keeps the interfaces explicit:
 
-1. Overview — overall structure  
-2. Architecture — layer responsibilities  
-3. Workflow — how to run the pipeline  
-4. Physics — physical model  
-5. Outputs — JSON interface  
+- cavity defines geometry, mode, and losses
+- crystal defines phase matching and selected nonlinear operating point
+- OPO defines threshold, pump parameter, Langevin model, and spectra
 
-## Conceptual Docs
+## Current Scope
 
-- [01_architecture.md](01_architecture.md): project structure, layer boundaries, and the cavity → crystal → OPO data flow  
-- [02_workflow.md](02_workflow.md): execution order, rerun conditions, and how the staged workflow is used in practice  
-- [03_physics.md](03_physics.md): high-level physical model, including cavity losses, phase matching, double resonance, and the current OPO scope  
-- [04_outputs.md](04_outputs.md): JSON structure and downstream-facing result interfaces  
-
-## Module Docs
-
-- [cavity.md](modules/cavity.md): cavity-layer inputs, supported geometries, loss model, and exported quantities  
-- [crystal.md](modules/crystal.md): operating-point logic, scans, and `active_for_opo`  
-- [opo.md](modules/opo.md): OPO model, use of `active_for_opo`, and generated outputs  
-
-## How to Use These Docs
-
-Start with the conceptual docs to understand the full pipeline.
-
-Then use the module-specific docs when working on a particular layer or modifying the code.
+The simulator targets design and analysis of a below-threshold degenerate OPO. It is not currently a full multimode, above-threshold, or non-degenerate dynamics simulator.

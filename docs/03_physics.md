@@ -1,97 +1,88 @@
-# 02 — Workflow
+# 03 - Physics
 
-This section describes how to run the simulator and how data flows through the pipeline.
+This page summarizes the physical models used by the current implementation. It is intentionally concise; implementation details are in the module docs and source code.
 
-The simulation is executed in three sequential steps:
+## Cavity Model
 
-cavity → crystal → OPO
+The cavity layer uses ABCD matrices to evaluate the resonator mode for the selected geometry. It exports the beam waist in the crystal and round-trip quantities used downstream.
 
-Each step writes a JSON file that is used as input by the next one.
+The optical round-trip length determines the free spectral range:
 
-## 1. Cavity
+```text
+FSR = c / L_optical_roundtrip
+```
 
-`src/cavity/cavity_main.py` defines the cavity configuration and computes:
+The resonant-field loss model separates useful output coupling from internal loss:
 
-- geometry-dependent mode properties
-- beam waist in the crystal
-- free spectral range (FSR)
-- reflectivity-based loss quantities
-- `kappa_ext_Hz`, `kappa_loss_Hz`, `kappa_total_Hz`
-- `escape_efficiency`
+- `kappa_ext`: decay rate associated with output coupling
+- `kappa_loss`: decay rate associated with internal/parasitic loss
+- `kappa_total = kappa_ext + kappa_loss`
 
-The output JSON defines the **optical system and loss model** used by all downstream layers.
+The escape efficiency is the useful output-coupling fraction of the total loss.
 
-## 2. Crystal
+## Crystal Model
 
-`src/crystal/crystal_main.py` loads the cavity JSON and then:
+The crystal layer computes refractive indices using the selected material model and phase-matching type. Supported material model names are currently `Kato2002`, `Fan1987`, and `Konig2004`.
 
-- computes the phase-matching scan
-- evaluates the phase-matching resonance diagnostic
-- optionally computes the double-resonance scan
-- builds candidate operating points
-- selects the active operating point using `OPERATING_POINT_MODE`
-- evaluates all crystal quantities at that selected point
-- exports `results.active_for_opo`
+For three-wave mixing, the bulk mismatch is:
 
-The current operating-point modes are:
+```text
+Delta k = k_p - k_s - k_i
+```
 
-- `phase_matching`
-- `double_resonance`
+With quasi-phase matching:
 
-The output defines the **nonlinear operating point** used by the OPO layer.
+```text
+Delta k_eff = Delta k - m * 2*pi/Lambda
+```
 
-## 3. OPO
+The phase-matching scan evaluates a sinc-squared conversion factor versus temperature.
 
-`src/opo/opo_main.py` loads cavity and crystal outputs and then:
+`PHASE_MATCHING_MODE = "design"` computes the QPM poling period at `DESIGN_TEMPERATURE_K`. `PHASE_MATCHING_MODE = "analysis"` uses the supplied `ANALYSIS_LAMBDA0_M`.
 
-- validates consistency between cavity geometry and crystal operating point
-- builds the below-threshold OPO operating-point model
-- constructs the Langevin model
-- computes squeezing spectra
-- generates plots
+The crystal layer also computes a polarization-resonance diagnostic for signal and idler. The double-resonance scan searches temperature and crystal length for small wrapped signal/idler phase mismatch.
 
-The output contains the **final physical prediction** of the simulation.
+## Boyd-Kleinman Quantities
 
-## Data Flow
+The spatial nonlinear overlap is described by Boyd-Kleinman-style quantities:
 
-The workflow enforces a strict data flow:
+- `xi = L / (2 z_R)`: focusing parameter
+- `sigma = z_R * Delta k_eff`: normalized mismatch parameter
+- Boyd-Kleinman factor: focusing/mismatch-dependent nonlinear overlap factor
+- effective nonlinear overlap: compact overlap value exported to OPO
 
-- `cavity` → defines geometry and losses  
-- `crystal` → defines the operating point  
-- `opo` → computes quantum noise and squeezing  
+## OPO Threshold and Pump Parameter
 
-Each layer consumes the output of the previous one and does not modify upstream quantities.
+The OPO model is below threshold, degenerate, and single-mode. It computes a physical threshold from the loaded cavity and crystal state.
 
-## Why the Order Matters
+The threshold condition is:
 
-The layers are not independent:
+```text
+g * sqrt(n_pump) = sqrt(kappa_s * kappa_i) / 2
+```
 
-- the crystal layer depends on the cavity beam waist and loss model  
-- the OPO layer depends on both cavity losses and the crystal operating point  
+The coupling `g` depends on `d_eff`, refractive indices, crystal length, mode area, pump/signal/idler frequencies, and nonlinear overlap.
 
-Running the steps out of order leads to inconsistent results.
+The pump is currently configured as `PUMP_RESONANCE_MODEL = "single_pass"` in `opo_main.py`. In this mode, the required pump field is converted to external pump power using the pump transit time through the crystal, not a pump-cavity lifetime. A resonant pump branch exists in the model but requires explicit pump linewidth and input-coupling efficiency.
 
-## When to Rerun Cavity
+The pump operating point can be specified by sigma/fraction or by absolute external pump power:
 
-You must rerun `cavity_main.py` when the selected crystal operating point changes the crystal length.
+```text
+sigma = sqrt(P_pump / P_threshold)
+```
 
-Typical case:
+## Squeezing Model
 
-- `OPERATING_POINT_MODE = "double_resonance"`
-- the selected point has a different `crystal_length_m` than the one used in the cavity
+The OPO layer builds a 2x2 quadrature Langevin model. The pump parameter modifies the damping of the two quadratures, and detuning rotates/mixes the quadratures.
 
-In that case, rerun:
+The spectrum calculation normalizes each quadrature to its high-frequency shot-noise asymptote. Therefore squeezing and anti-squeezing approach 0 dB at high analysis frequency.
 
-1. `python src/cavity/cavity_main.py`
-2. `python src/crystal/crystal_main.py`
-3. `python src/opo/opo_main.py`
+## Assumptions and Limitations
 
-This ensures that cavity geometry and crystal operating point remain consistent.
-
----
-
-For module-specific details, see:
-
-- [cavity.md](modules/cavity.md)
-- [crystal.md](modules/crystal.md)
-- [opo.md](modules/opo.md)
+- below-threshold only
+- degenerate signal/idler model
+- single mode
+- no pump depletion
+- no above-threshold dynamics
+- no full non-degenerate or multimode OPO dynamics
+- resonance diagnostic plots are interpretive aids, not full transfer-function calculations

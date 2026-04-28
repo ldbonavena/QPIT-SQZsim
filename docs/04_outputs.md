@@ -1,149 +1,174 @@
-# 04 — Outputs
+# 04 - Outputs
 
-This section describes the JSON outputs produced by each layer of the simulator.
+Each stage writes JSON under `results/<geometry>/<stage>/`. These files define the data interface between stages.
 
-These files define the **interface between layers** and are the primary way data flows through the pipeline:
-
-cavity → crystal → OPO
-
-Each stage writes a JSON file that is consumed by the next one.
-
----
-
-## General Structure
-
-Each JSON file has the form:
+General structure:
 
 ```json
 {
-  "inputs": { ... },
-  "results": { ... },
-  "debug_data": { ... }
+  "inputs": {},
+  "results": {},
+  "debug_data": {}
 }
 ```
 
-`debug_data` is optional.
+`debug_data` is present only when that stage writes diagnostics.
 
----
+## Cavity JSON
 
-## Inputs
+Path:
 
-`inputs` contains the information needed to understand how the file was produced.
+```text
+results/<geometry>/cavity/cavity_simulation_output.json
+```
 
-It provides **traceability and reproducibility**.
+Top-level keys:
 
-Typical contents:
+- `inputs`
+- `results`
+- `debug_data`
 
-- geometry and configuration parameters
-- upstream JSON paths
-- wavelengths and material choices
-- crystal length
-- cavity reflectivities and loss inputs
-- selected operating-point mode
+Important `inputs` fields include:
 
-This block is not used directly downstream, but is essential for debugging and validation.
+- `geometry`
+- `crystal_length_m`
+- `n_crystal`
+- `RoC_1_m`, `RoC_2_m`
+- `wavelength_m`
+- resonant reflectivities and loss inputs
+- `geometry_specific`
 
----
+Important `results` fields include:
 
-## Results
+- `beam_waist_crystal_um`
+- `cavity_length_m`
+- `optical_crystal_length_m`
+- `optical_roundtrip_length_m`
+- `fsr_Hz`
+- `roundtrip_propagation_length_m`
+- `input_coupler_transmission`
+- `output_coupling_transmission`
+- `bulk_roundtrip_loss`
+- `internal_roundtrip_loss`
+- `kappa_ext_rad_s`, `kappa_ext_Hz`
+- `kappa_loss_rad_s`, `kappa_loss_Hz`
+- `kappa_total_rad_s`, `kappa_total_Hz`
+- `escape_efficiency`
+- `detuning_rad_s`
+- `gouy_phase_sagittal_rad`, `gouy_phase_tangential_rad`
 
-`results` contains the **compact downstream-facing payload**.
+`debug_data` contains q-parameters, m-factor data, and resolved radii.
 
-This is the only part that should be used by subsequent layers.
+Downstream use:
 
-Design principles:
+- crystal uses beam waist, crystal length, wavelength, refractive index, and cavity data
+- OPO uses kappa values, escape efficiency, detuning, and consistency checks
 
-- minimal
-- stable
-- sufficient to reproduce downstream calculations
+## Crystal JSON
 
-Examples:
+Path:
 
-- **cavity**
-  - beam waist
-  - optical round-trip length
-  - FSR
-  - `kappa_ext`, `kappa_loss`, `kappa_total`
-  - `escape_efficiency`
+```text
+results/<geometry>/crystal/crystal_simulation_output.json
+```
 
-- **crystal**
-  - selected operating point
-  - compact phase matching
-  - compact mode matching
-  - Boyd–Kleinman summary
-  - polarization resonance
-  - `active_for_opo`
+Standard top-level keys:
 
-- **OPO**
-  - operating-point model
-  - squeezing spectrum
+- `inputs`
+- `results`
 
----
+Current standard `inputs` contains:
 
-## Debug Data
+- `d_eff_pm_per_V`
 
-`debug_data` contains heavy or diagnostic payloads that are not needed downstream.
+Current standard `results` contains:
 
-Typical contents:
+- `active_for_opo`
 
-- phase-matching scans
-- double-resonance scans
-- full Boyd–Kleinman maps
-- Langevin matrices
-- intermediate diagnostic quantities
-
-Design principles:
-
-- may be large
-- may change structure
-- not guaranteed to be stable
-- not intended for downstream use
-
----
-
-## `active_for_opo`
-
-`crystal.results.active_for_opo` is the **core interface between the crystal and OPO layers**.
-
-It represents the **fully resolved crystal operating point**.
-
-It contains:
+`active_for_opo` contains the compact OPO handoff:
 
 - `operating_point_mode`
 - `temperature_K`
 - `crystal_length_m`
-- `phase_matching`
+- `refractive_indices`
+  - `n_p`
+  - `n_s`
+  - `n_i`
 - `mode_matching`
-- `boyd_kleinman_analysis`
+  - `waist_crystal_m`
+  - `effective_nonlinear_overlap`
 - `polarization_resonance`
+  - `fsr_signal_Hz`
+  - `fsr_idler_Hz`
+  - `delta_fsr_Hz`
+  - `delta_phi_wrapped_rad`
+  - `is_double_resonant`
+  - `signal_optical_roundtrip_length_m`
+  - `idler_optical_roundtrip_length_m`
+- `recommended_cavity_crystal_length_m`
 
-This block is:
+Debug output can be enabled through the workflow builder. When enabled, it may include active phase matching, operating points, scans, double-resonance summaries or matrices, and Boyd-Kleinman diagnostics.
 
-- the single source of truth for the crystal state
-- the only crystal payload used by the OPO layer
+Downstream use:
 
-The OPO layer must consume this block directly without reinterpretation.
+- OPO reads `active_for_opo` as the selected crystal state
+- OPO requires `refractive_indices`, `mode_matching`, `crystal_length_m`, and `d_eff_pm_per_V` for the physical threshold
 
----
+## OPO JSON
 
-## Design Philosophy
+Path:
 
-The output structure enforces a strict separation:
+```text
+results/<geometry>/opo/opo_simulation_output.json
+```
 
-- `inputs` → how the result was produced  
-- `results` → what is needed downstream  
-- `debug_data` → optional diagnostics  
+Top-level keys:
 
-This ensures:
+- `inputs`
+- `results`
+- `debug_data`
 
-- clear interfaces between layers  
-- minimal data duplication  
-- stable downstream behavior  
+Important `inputs` fields include:
 
----
+- `geometry`
+- `cavity_output_path`
+- `crystal_output_path`
+- `pump_mode`
+- `pump_power_W` or `pump_parameter_sigma` / `pump_percent_threshold`
+- `pump_resonance_model`
+- `signal_wavelength_m`, `idler_wavelength_m`, `pump_wavelength_m`
+- analysis frequency and detection settings
 
-For the meaning of individual fields, see:
+`results.model` contains the resolved OPO operating point, including:
 
-- [cavity.md](modules/cavity.md)
-- [crystal.md](modules/crystal.md)
-- [opo.md](modules/opo.md)
+- `pump_mode`
+- `pump_parameter`
+- `pump_power_W`
+- `effective_threshold_power_W`
+- `threshold_external_pump_power_W`
+- `threshold_intracavity_pump_photon_number`
+- `threshold_nonlinear_coupling`
+- `threshold_mode_area_m2`
+- `threshold_overlap`
+- `threshold_refractive_indices`
+- `pump_resonance_model`
+- `pump_buildup_factor`
+- `pump_conversion_assumption`
+- `d_eff_pm_per_V`
+- `crystal_length_m`
+- `cavity_kappa_ext_Hz`, `cavity_kappa_loss_Hz`, `cavity_kappa_total_Hz`
+- `escape_efficiency`
+- `below_threshold`
+
+`results.spectrum` contains:
+
+- `frequency_Hz`
+- `squeezing_spectrum`
+- `antisqueezing_spectrum`
+- `measured_quadrature_spectrum`
+- `shot_noise_reference`
+- `optimal_phase_rad`
+- `lo_phase_rad`
+- `notes`
+
+`debug_data.langevin` contains quadrature labels and the drift/input/noise matrices.

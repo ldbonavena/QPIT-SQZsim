@@ -1,253 +1,127 @@
-# OPO Layer
+# OPO Module
 
-This page documents the OPO-side workflow and the final simulation stage of the pipeline.
+The OPO module consumes cavity and crystal outputs and computes the below-threshold squeezing spectra.
 
-## Role
+Entry point:
 
-The OPO layer consumes the cavity and crystal outputs and builds the final operating-point model used to compute squeezing spectra.
+```text
+src/opo/opo_main.py
+```
 
-It combines:
+Core implementation:
 
-- cavity loss and linewidth (kappa)
-- crystal nonlinear interaction
-- operating-point selection from the crystal layer
-- a linearized Langevin model for quantum noise
+```text
+src/opo/opo_model.py
+src/opo/opo_langevin.py
+src/opo/opo_squeezing.py
+src/opo/opo_workflow.py
+src/opo/opo_plotter.py
+```
 
-The entry point is:
+## What It Computes
 
-- `src/opo/opo_main.py`
+The OPO stage computes:
 
-## What `opo_main.py` Does
+- cavity/crystal consistency checks
+- first-principles external threshold power
+- resolved pump parameter and pump power
+- below-threshold quadrature Langevin model
+- squeezing, anti-squeezing, measured quadrature, and optimal phase spectra
+- resonance diagnostic plot
 
-The OPO script:
+## Inputs
 
-- loads cavity and crystal JSON outputs
-- validates consistency between cavity and crystal operating point
-- builds the OPO operating-point model
-- constructs the Langevin model
-- computes squeezing spectra
-- generates diagnostic plots
-- exports results to JSON
+From cavity JSON, the OPO stage uses:
 
-## Workflow
-
-The OPO layer performs the following steps:
-
-1. Load cavity and crystal outputs
-2. Validate crystal–cavity consistency
-3. Build OPO parameters
-4. Derive the OPO operating-point model
-5. Construct the Langevin model (quadrature basis)
-6. Compute frequency-domain squeezing spectra
-7. Build structured output
-8. Generate plots and save results
-
-## Initial Configuration
-
-The OPO workflow is driven mainly by the parameters defined in `opo_main.py`.
-
-The most important ones are:
-
-- `pump_power_W`
-- `threshold_power_W`
-- `signal_wavelength_m`
-- `pump_wavelength_m`
-- `analysis_sideband_Hz`
-- `analysis_span_Hz`
-- `n_analysis_points`
-- `detection_efficiency`
-- `lo_phase_rad`
-
-These define the operating regime, the analysis frequency range, and the measurement conditions.
-
-## Inputs from Cavity and Crystal
-
-The OPO layer consumes:
-
-### From cavity (`results`)
-
-- `kappa_ext_Hz`
-- `kappa_loss_Hz`
-- `kappa_total_Hz`
+- `kappa_ext`
+- `kappa_loss`
+- `kappa_total`
 - `escape_efficiency`
-- cavity detuning
+- detuning
+- cavity crystal length for consistency checks
 
-### From crystal (`results.active_for_opo`)
+From crystal JSON, it uses `results.active_for_opo`, especially:
 
-- `operating_point_mode`
-- `temperature_K`
 - `crystal_length_m`
-- `phase_matching`
-- `mode_matching`
-- `boyd_kleinman_analysis`
-- `polarization_resonance`
+- `refractive_indices`
+- `mode_matching.waist_crystal_m`
+- `mode_matching.effective_nonlinear_overlap`
+- polarization-resonance data for diagnostics
 
-The `active_for_opo` block is the **single source of truth** for the crystal state.
+It also uses `inputs.d_eff_pm_per_V` from the crystal JSON.
 
-The OPO layer does not choose the operating point itself. It uses the point already selected by the crystal layer.
+## Pump Configuration
 
-## Consistency Check
+`opo_main.py` supports two pump input modes.
 
-The OPO layer enforces consistency between:
+Fraction mode:
 
-- cavity crystal length
-- crystal selected operating-point length
+```python
+PUMP_MODE = "fraction"
+PUMP_PARAMETER_SIGMA = 0.1
+```
 
-If these differ (for example after a double-resonance scan):
+Absolute mode:
 
-- the simulation stops
-- the cavity must be rerun with the updated crystal length
+```python
+PUMP_MODE = "absolute"
+PUMP_POWER_W = 0.2e-3
+```
 
-This prevents mixing incompatible cavity geometry and crystal operating conditions.
+In fraction mode, `PUMP_PARAMETER_SIGMA` is prioritized over `PUMP_PERCENT_THRESHOLD` if both are present. The model always resolves and stores both final external pump power and pump parameter.
 
-## OPO Operating-Point Model
+## Threshold Model
 
-The OPO model combines cavity and crystal physics into a compact set of parameters:
+The threshold is computed from the loaded cavity and crystal state. It uses the nonlinear coupling, signal/idler decay rates, refractive indices, `d_eff`, crystal length, effective mode area, and nonlinear overlap.
 
-- pump parameter `σ`
-- effective threshold power
-- nonlinear coupling
-- escape efficiency
-- cavity linewidth and detuning
+The threshold condition is:
 
-The nonlinear coupling depends on:
+```text
+g * sqrt(n_pump) = sqrt(kappa_s * kappa_i) / 2
+```
 
-- `d_eff`
-- crystal length
-- spatial mode overlap
-- effective mode area
+The current default pump resonance model is:
 
-The threshold is not a full first-principles calculation, but a **physics-informed approximation** calibrated around the provided threshold power.
+```python
+PUMP_RESONANCE_MODEL = "single_pass"
+```
 
-## Langevin Model
+In `single_pass` mode, the threshold pump energy is converted to external pump power using the pump transit time through the crystal. The code does not apply accidental pump-cavity buildup in this mode.
 
-The current implementation uses a **linearized 2×2 quadrature model**.
+A `resonant` pump branch exists, but it requires explicit pump linewidth and pump input-coupling efficiency.
 
-It defines:
+## Langevin and Squeezing
 
-- quadratures: X and P
-- drift matrix (including damping and detuning)
-- input and noise coupling matrices
+The Langevin model is a 2x2 quadrature-basis model with X and P quadratures. It is valid only below threshold. The squeezing calculation normalizes spectra to the high-frequency shot-noise reference, so spectra approach 0 dB at high analysis frequency.
 
-Key features:
-
-- valid only **below threshold**
-- includes quadrature mixing via cavity detuning
-- provides a minimal but consistent noise model
-
-## Squeezing Spectrum
-
-The squeezing calculation:
-
-- evaluates the frequency-domain response of the Langevin model
-- computes spectral densities for X and P quadratures
-- identifies squeezing and anti-squeezing
-- includes:
-  - escape efficiency (intracavity → output)
-  - detection efficiency (measurement loss)
-
-Outputs include:
-
-- squeezing spectrum
-- anti-squeezing spectrum
-- measured quadrature spectrum (LO phase dependent)
-- optimal squeezing phase vs frequency
-
-All spectra are normalized to the high-frequency shot-noise limit.
-
-## Reading the OPO Summary
-
-The OPO summary provides the main operating-point quantities.
-
-Typical interpretation:
-
-- `pump parameter sigma`  
-  normalized pump strength relative to threshold
-
-- `effective threshold power`  
-  threshold estimate including the current cavity/crystal operating conditions
-
-- `below_threshold`  
-  whether the model is being used in its intended regime
-
-- `crystal operating point mode`  
-  whether the crystal layer selected `phase_matching` or `double_resonance`
-
-- `crystal active temperature` and `crystal active length`  
-  the actual crystal state used by the OPO model
-
-## Resonance Diagnostic
-
-The OPO layer provides a visualization of longitudinal resonances:
-
-- signal and idler mode combs
-- cavity linewidth
-- gain envelope
-
-This is based on the crystal-side polarization-resonance diagnostic.
-
-It is a **diagnostic visualization**, not a full transfer-function model.
-
-## How to Use the OPO Plots
-
-The OPO plots are diagnostic and interpretive tools.
-
-Typical usage:
-
-1. Inspect the squeezing spectrum to evaluate the predicted noise reduction
-2. Inspect the measured quadrature trace to understand the effect of LO phase
-3. Inspect the resonance diagnostic to see whether signal and idler are close to simultaneous resonance
-4. Compare results for different crystal operating-point modes if needed
-
-The resonance plot is especially useful for checking whether a `double_resonance` operating point is being used consistently.
+The calculation includes escape efficiency and detection efficiency as loss channels.
 
 ## Outputs
 
-The OPO JSON output is structured as:
+The OPO stage writes:
 
-- `inputs`: simulation parameters and file references
-- `results`:
-  - `model`: compact OPO operating-point quantities
-  - `spectrum`: squeezing spectra
-- `debug_data`:
-  - Langevin matrices and internal diagnostics
+```text
+results/<geometry>/opo/opo_simulation_output.json
+results/<geometry>/opo/opo_squeezing_spectrum.png
+results/<geometry>/opo/opo_resonance_diagnostic.png
+```
 
-The `model` block includes:
+The JSON contains:
 
-- pump parameter
-- threshold powers
-- cavity decay rates
-- escape efficiency
-- crystal operating point (mode, temperature, length)
+- `inputs`: resolved OPO configuration and upstream file paths
+- `results.model`: threshold, pump, cavity, and crystal operating-point quantities
+- `results.spectrum`: spectra arrays
+- `debug_data.langevin`: Langevin matrices
 
-For the full schema, see [04_outputs.md](../04_outputs.md).
+See [../04_outputs.md](../04_outputs.md) for the JSON field list.
 
-## Scope
+## Limitations
 
-The current OPO model is intentionally limited.
-
-It is:
+The current OPO model is:
 
 - below threshold
 - degenerate
 - single-mode
-- linearized (Gaussian)
+- linearized
 
-It is not:
-
-- a full non-degenerate model
-- a multimode model
-- a full nonlinear (above-threshold) model
-- a complete first-principles threshold calculation
-
-## Practical Notes
-
-- squeezing depends strongly on escape efficiency and detection efficiency
-- cavity detuning rotates the squeezing quadrature
-- the selected crystal operating point directly affects the OPO performance
-- double-resonance operation requires cavity–crystal consistency
-- changing the crystal operating point does not automatically change cavity geometry
-
-For execution order, see [02_workflow.md](../02_workflow.md).  
-For architecture, see [01_architecture.md](../01_architecture.md).  
-For physical background, see [03_physics.md](../03_physics.md).
+It does not model pump depletion, above-threshold dynamics, multimode behavior, or full non-degenerate dynamics.

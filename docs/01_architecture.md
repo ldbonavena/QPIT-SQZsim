@@ -1,93 +1,57 @@
-# 01 — Architecture
+# 01 - Architecture
 
-This section describes the structure of the simulator, the role of each layer, and how data flows through the pipeline.
+The codebase is split into four source areas:
 
-The project is organized as a one-way pipeline:
+```text
+src/cavity/   resonator geometry, Gaussian mode, losses
+src/crystal/  refractive index, phase matching, operating point, BK overlap
+src/opo/      physical threshold, pump parameter, Langevin model, spectra
+src/common/   constants and results-path helpers
+```
 
-cavity → crystal → OPO
+The data flow is one-way:
 
-Each layer owns a well-defined part of the model and exports the quantities needed by the next stage.
+```text
+cavity JSON -> crystal JSON -> OPO JSON
+```
 
 ## Cavity Layer
 
-The cavity layer defines the **optical system**.
+The cavity layer owns all resonator geometry and resonant-field loss calculations. It computes:
 
-It is responsible for:
+- geometric and optical round-trip lengths
+- beam waist in the crystal
+- free spectral range
+- output-coupling and internal-loss decay rates
+- total decay rate and escape efficiency
+- Gouy phases and ABCD diagnostics
 
-- geometry
-- Gaussian resonator mode properties
-- resonant-field loss model
-- derived quantities such as:
-  - `kappa_ext_Hz`
-  - `kappa_loss_Hz`
-  - `kappa_total_Hz`
-  - `escape_efficiency`
-
-This is the **only layer that computes cavity losses and coupling rates**.
-
-All downstream layers must use these values as-is.
+Downstream stages use these values as exported. They do not recompute cavity geometry.
 
 ## Crystal Layer
 
-The crystal layer defines the **nonlinear interaction and operating point**.
+The crystal layer consumes the cavity JSON and owns the nonlinear operating point. It computes:
 
-It is responsible for:
+- material refractive indices
+- QPM phase matching and optional design poling period
+- phase-matching and double-resonance operating-point candidates
+- selected operating point
+- mode matching and Boyd-Kleinman overlap
+- compact `active_for_opo` handoff payload
 
-- refractive-index and phase-matching calculations
-- phase-matching and double-resonance scans
-- selection of a single operating point
-- mode-matching quantities
-- Boyd–Kleinman summary
-- polarization-resonance diagnostics
-
-Its downstream interface is:
-
-- `crystal.results.active_for_opo`
-
-This block represents the **resolved crystal state** used by the OPO layer.
+The OPO layer uses `results.active_for_opo` as the resolved crystal state.
 
 ## OPO Layer
 
-The OPO layer defines the **quantum model at the selected operating point**.
+The OPO layer consumes cavity and crystal JSON files. It computes:
 
-It consumes:
+- physical threshold from cavity decay rates and crystal nonlinear parameters
+- pump operating point from either sigma/fraction mode or absolute pump power
+- below-threshold 2x2 quadrature Langevin model
+- squeezing, anti-squeezing, measured quadrature, and optimal phase spectra
 
-- cavity `results`
-- crystal `results.active_for_opo`
+It validates that the selected crystal length is consistent with the loaded cavity geometry.
 
-It builds:
+## Common Layer
 
-- a compact below-threshold operating-point model
-- a minimal Langevin model
-- squeezing and anti-squeezing spectra
-
-**Important:**
-
-The OPO layer is a pure consumer.
-
-It must NOT:
-
-- recompute cavity quantities
-- reinterpret cavity geometry
-- change the crystal operating point
-
-All upstream decisions are taken as fixed inputs.
-
-## Data Flow
-
-The JSON outputs define the interface between layers.
-
-- `cavity` exports geometry-dependent mode and loss quantities
-- `crystal` loads the cavity output and exports a single resolved operating point
-- `opo` loads both and uses them directly
-
-This enforces a strict separation:
-
-- geometry and losses → `cavity`
-- nonlinear operating-point selection → `crystal`
-- quantum noise and squeezing → `opo`
-
-Each layer depends only on upstream outputs, never the other way around.
-
-For execution details, see [02_workflow.md](02_workflow.md).  
-For the JSON structure, see [04_outputs.md](04_outputs.md).
+`src/common/` contains shared physical constants and helpers for locating `results/<geometry>/<stage>/` output directories.
