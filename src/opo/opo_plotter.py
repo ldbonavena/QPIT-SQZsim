@@ -12,7 +12,7 @@ except ImportError:
 
 
 def plot_opo_spectrum_summary(spectrum: dict[str, list[float]]):
-    """Plot squeezing, antisqueezing, and shot-noise reference spectra."""
+    """Plot principal squeezing, antisqueezing, and shot-noise reference spectra."""
     frequency_hz = np.asarray(spectrum["frequency_Hz"], dtype=float)
     squeezing = np.maximum(np.asarray(spectrum["squeezing_spectrum"], dtype=float), np.finfo(float).eps)
     antisqueezing = np.maximum(np.asarray(spectrum["antisqueezing_spectrum"], dtype=float), np.finfo(float).eps)
@@ -29,9 +29,9 @@ def plot_opo_spectrum_summary(spectrum: dict[str, list[float]]):
     shot_noise_db = 10.0 * np.log10(shot_noise)
 
     fig, ax = plt.subplots(figsize=(10.5, 5.6))
-    ax.plot(frequency_hz, squeezing_db, lw=2.8, label="Squeezing")
-    ax.plot(frequency_hz, antisqueezing_db, lw=2.8, label="Antisqueezing")
-    ax.plot(frequency_hz, measured_db, "--", lw=2.4, label=fr"Measured ($\theta={theta:.2f}$ rad)")
+    ax.plot(frequency_hz, squeezing_db, lw=2.8, label="Squeezing (principal min)")
+    ax.plot(frequency_hz, antisqueezing_db, lw=2.8, label="Antisqueezing (principal max)")
+    ax.plot(frequency_hz, measured_db, "--", lw=2.4, label=fr"Measured LO ($\theta={theta:.2f}$ rad)")
     ax.plot(frequency_hz, shot_noise_db, "--", lw=1.6, color="#666666", label="Shot noise")
     ax.axhline(0.0, color="#666666", ls="--", lw=1.0, alpha=0.6)
 

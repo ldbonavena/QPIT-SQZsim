@@ -7,6 +7,7 @@ Langevin state-space matrices.
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 
 import numpy as np
@@ -56,14 +57,6 @@ def _compute_minimal_output_spectral_density(
     return output_transfer @ output_transfer.T.conj()
 
 
-def _high_frequency_reference(values: np.ndarray) -> float:
-    """Estimate the asymptotic high-frequency reference from the tail of one spectrum."""
-    n_points = values.size
-    tail_count = max(1, int(np.ceil(0.1 * n_points)))
-    tail_mean = float(np.mean(values[-tail_count:]))
-    return max(tail_mean, np.finfo(float).eps)
-
-
 def build_analysis_frequency_grid(parameters: OPOParameters) -> np.ndarray:
     """Build the analysis-frequency axis used for spectrum calculations."""
     frequency_min_hz, frequency_max_hz = parameters.analysis_span_Hz
@@ -72,6 +65,50 @@ def build_analysis_frequency_grid(parameters: OPOParameters) -> np.ndarray:
     if frequency_min_hz < 0.0 or frequency_max_hz <= frequency_min_hz:
         raise ValueError("analysis_span_Hz must satisfy 0 <= frequency_min_hz < frequency_max_hz")
     return np.linspace(frequency_min_hz, frequency_max_hz, parameters.n_analysis_points, dtype=float)
+
+
+def _real_symmetric_quadrature_spectrum(output_spectral_density: np.ndarray) -> np.ndarray:
+    """Return the real symmetric quadrature spectral-density matrix."""
+    spectrum = np.asarray(output_spectral_density, dtype=complex)
+    real_spectrum = np.real(spectrum)
+    return 0.5 * (real_spectrum + real_spectrum.T)
+
+
+def _apply_vacuum_loss(spectrum: np.ndarray, efficiency: float) -> np.ndarray:
+    """Mix a shot-noise-normalized spectrum with vacuum loss."""
+    return 1.0 - efficiency + efficiency * spectrum
+
+
+def _validate_ordered_principal_spectra(
+    squeezing: np.ndarray,
+    antisqueezing: np.ndarray,
+    *,
+    check_high_frequency_limit: bool,
+    high_frequency_rtol: float = 0.2,
+) -> None:
+    """Validate non-negative, ordered, shot-noise-normalized principal spectra."""
+    if np.any(~np.isfinite(squeezing)) or np.any(~np.isfinite(antisqueezing)):
+        raise FloatingPointError("Non-finite principal squeezing spectrum value.")
+    if np.any(squeezing < 0.0):
+        raise FloatingPointError("Principal squeezing spectrum contains a negative linear value.")
+    if np.any(antisqueezing < 0.0):
+        raise FloatingPointError("Principal antisqueezing spectrum contains a negative linear value.")
+    if np.any(squeezing > antisqueezing):
+        raise FloatingPointError("Principal squeezing spectrum exceeds antisqueezing spectrum.")
+
+    if check_high_frequency_limit and squeezing.size:
+        high_squeezing = float(squeezing[-1])
+        high_antisqueezing = float(antisqueezing[-1])
+        if not (
+            np.isclose(high_squeezing, 1.0, rtol=high_frequency_rtol, atol=0.0)
+            and np.isclose(high_antisqueezing, 1.0, rtol=high_frequency_rtol, atol=0.0)
+        ):
+            warnings.warn(
+                "Highest computed OPO analysis frequency is not yet close to the shot-noise asymptote "
+                f"(squeezing={high_squeezing:.6g}, antisqueezing={high_antisqueezing:.6g}).",
+                RuntimeWarning,
+                stacklevel=2,
+            )
 
 
 def compute_squeezing_spectra(
@@ -104,8 +141,8 @@ def compute_squeezing_spectra(
     input_matrix = np.asarray(langevin.input_matrix, dtype=float)
     noise_coupling_matrix = np.asarray(langevin.noise_coupling_matrix, dtype=float)
 
-    quadrature_x_output = np.empty_like(frequency_hz, dtype=float)
-    quadrature_p_output = np.empty_like(frequency_hz, dtype=float)
+    squeezing_internal = np.empty_like(frequency_hz, dtype=float)
+    antisqueezing_internal = np.empty_like(frequency_hz, dtype=float)
     measured_quadrature_output = np.empty_like(frequency_hz, dtype=float)
     optimal_phase_rad = np.empty_like(frequency_hz, dtype=float)
     failed_points = 0
@@ -119,74 +156,79 @@ def compute_squeezing_spectra(
                 linewidth_rad_s,
                 omega_i,
             )
-            s_xx = max(float(np.real_if_close(output_sd[0, 0])), 0.0)
-            s_pp = max(float(np.real_if_close(output_sd[1, 1])), 0.0)
-            s_xp = complex(output_sd[0, 1])
-            s_px = complex(output_sd[1, 0])
+            symmetric_spectrum = _real_symmetric_quadrature_spectrum(output_sd)
+            eigenvalues, eigenvectors = np.linalg.eigh(symmetric_spectrum)
 
-            quadrature_x_output[i] = s_xx
-            quadrature_p_output[i] = s_pp
+            squeezing_value = float(eigenvalues[0])
+            antisqueezing_value = float(eigenvalues[-1])
+            numerical_floor = -100.0 * np.finfo(float).eps
+            if squeezing_value < numerical_floor or antisqueezing_value < numerical_floor:
+                raise FloatingPointError("Negative principal spectrum eigenvalue.")
 
-            measured_value = np.real_if_close(measurement_vector @ output_sd @ measurement_vector)
-            measured_quadrature_output[i] = max(float(measured_value), 0.0)
+            squeezing_internal[i] = max(squeezing_value, 0.0)
+            antisqueezing_internal[i] = max(antisqueezing_value, 0.0)
 
-            symmetric_spectrum = np.array(
-                [
-                    [s_xx, float(np.real_if_close(0.5 * (s_xp + s_px)))],
-                    [float(np.real_if_close(0.5 * (s_xp + s_px))), s_pp],
-                ],
-                dtype=float,
-            )
-            _, eigenvectors = np.linalg.eigh(symmetric_spectrum)
+            measured_value = float(measurement_vector @ symmetric_spectrum @ measurement_vector)
+            if measured_value < numerical_floor:
+                raise FloatingPointError("Negative measured quadrature spectrum value.")
+            measured_quadrature_output[i] = max(measured_value, 0.0)
+
             optimal_phase_rad[i] = float(np.arctan2(eigenvectors[1, 0], eigenvectors[0, 0]))
 
             if (
-                not np.isfinite(quadrature_x_output[i])
-                or not np.isfinite(quadrature_p_output[i])
+                not np.isfinite(squeezing_internal[i])
+                or not np.isfinite(antisqueezing_internal[i])
                 or not np.isfinite(measured_quadrature_output[i])
                 or not np.isfinite(optimal_phase_rad[i])
             ):
-                raise FloatingPointError("Non-finite normalized spectrum value.")
+                raise FloatingPointError("Non-finite spectrum value.")
         except (np.linalg.LinAlgError, ValueError, FloatingPointError):
-            quadrature_x_output[i] = 1.0
-            quadrature_p_output[i] = 1.0
+            squeezing_internal[i] = 1.0
+            antisqueezing_internal[i] = 1.0
             measured_quadrature_output[i] = 1.0
             optimal_phase_rad[i] = theta
             failed_points += 1
 
-    quadrature_x_output = quadrature_x_output / _high_frequency_reference(quadrature_x_output)
-    quadrature_p_output = quadrature_p_output / _high_frequency_reference(quadrature_p_output)
-    measured_quadrature_output = measured_quadrature_output / _high_frequency_reference(measured_quadrature_output)
-
-    quadrature_x_low = float(quadrature_x_output[0])
-    quadrature_p_low = float(quadrature_p_output[0])
-    if quadrature_x_low <= quadrature_p_low:
-        squeezing_internal = quadrature_x_output
-        antisqueezing_internal = quadrature_p_output
-    else:
-        squeezing_internal = quadrature_p_output
-        antisqueezing_internal = quadrature_x_output
-
-    squeezing_coupled = 1.0 - eta_esc + eta_esc * squeezing_internal
-    antisqueezing_coupled = 1.0 - eta_esc + eta_esc * antisqueezing_internal
-    measured_coupled = 1.0 - eta_esc + eta_esc * measured_quadrature_output
+    squeezing_coupled = _apply_vacuum_loss(squeezing_internal, eta_esc)
+    antisqueezing_coupled = _apply_vacuum_loss(antisqueezing_internal, eta_esc)
+    measured_coupled = _apply_vacuum_loss(measured_quadrature_output, eta_esc)
 
     # Detection loss mixes the output with vacuum and pulls both spectra
     # toward the shot-noise reference.
-    squeezing = 1.0 - eta_det + eta_det * squeezing_coupled
-    antisqueezing = 1.0 - eta_det + eta_det * antisqueezing_coupled
-    measured = 1.0 - eta_det + eta_det * measured_coupled
+    squeezing = _apply_vacuum_loss(squeezing_coupled, eta_det)
+    antisqueezing = _apply_vacuum_loss(antisqueezing_coupled, eta_det)
+    measured = _apply_vacuum_loss(measured_coupled, eta_det)
+
+    max_frequency_is_asymptotic = bool(float(omega[-1]) >= 10.0 * linewidth_rad_s)
+    _validate_ordered_principal_spectra(
+        squeezing,
+        antisqueezing,
+        check_high_frequency_limit=max_frequency_is_asymptotic,
+    )
+    squeezing_db = 10.0 * np.log10(np.maximum(squeezing, np.finfo(float).eps))
+    antisqueezing_db = 10.0 * np.log10(np.maximum(antisqueezing, np.finfo(float).eps))
+    if np.any(squeezing_db > antisqueezing_db):
+        warnings.warn(
+            "Squeezing dB exceeds antisqueezing dB at one or more frequencies.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
 
     notes = [
         "Spectrum computed from a minimal output spectral-density construction in a 2x2 quadrature basis.",
-        "The X/P quadratures are mixed by cavity detuning before squeezing and anti-squeezing labels are assigned.",
-        "Squeezing and anti-squeezing labels are assigned from the low-frequency ordering of the quadrature spectra.",
+        "For each frequency, squeezing is the minimum eigenvalue of the real symmetric quadrature spectral-density matrix.",
+        "For each frequency, antisqueezing is the maximum eigenvalue of the same matrix.",
         f"Measured quadrature defined by homodyne LO phase theta = {theta:.6f} rad.",
         "optimal_phase_rad stores the phase of the minimum-noise quadrature at each analysis frequency.",
-        "Each quadrature spectrum is normalized to its high-frequency shot-noise asymptote.",
+        "All spectra use one common shot-noise reference; principal spectra are not normalized independently.",
         f"Cavity detuning used in the quadrature response: {float(model.cavity_detuning_Hz):.6f} Hz.",
         "Escape efficiency and detection efficiency are included phenomenologically.",
     ]
+    if not max_frequency_is_asymptotic:
+        notes.append(
+            "The highest requested analysis frequency is below 10 cavity linewidths, "
+            "so the finite plotted endpoint is not treated as the asymptotic shot-noise limit."
+        )
     if failed_points:
         notes.append(
             f"{failed_points} frequency point(s) fell back to shot noise after a response-matrix inversion failure."

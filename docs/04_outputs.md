@@ -163,10 +163,10 @@ Important `inputs` fields include:
 `results.spectrum` contains:
 
 - `frequency_Hz`
-- `squeezing_spectrum`
-- `antisqueezing_spectrum`
-- `measured_quadrature_spectrum`
-- `shot_noise_reference`
+- `squeezing_spectrum`: minimum-noise principal quadrature, linear units normalized to shot noise
+- `antisqueezing_spectrum`: maximum-noise principal quadrature, linear units normalized to shot noise
+- `measured_quadrature_spectrum`: fixed LO-phase quadrature, linear units normalized to shot noise
+- `shot_noise_reference`: common shot-noise reference
 - `optimal_phase_rad`
 - `lo_phase_rad`
 - `notes`

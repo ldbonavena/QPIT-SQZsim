@@ -92,7 +92,7 @@ A `resonant` pump branch exists, but it requires explicit pump linewidth and pum
 
 ## Langevin and Squeezing
 
-The Langevin model is a 2x2 quadrature-basis model with X and P quadratures. It is valid only below threshold. The squeezing calculation normalizes spectra to the high-frequency shot-noise reference, so spectra approach 0 dB at high analysis frequency.
+The Langevin model is a 2x2 quadrature-basis model with X and P quadratures. It is valid only below threshold. At each analysis frequency, the squeezing calculation diagonalizes the real symmetric quadrature spectral-density matrix. `squeezing_spectrum` is the minimum principal eigenvalue, `antisqueezing_spectrum` is the maximum principal eigenvalue, and `measured_quadrature_spectrum` is the fixed LO-phase projection. All spectra use the common shot-noise reference, so spectra approach 0 dB at high analysis frequency.
 
 The calculation includes escape efficiency and detection efficiency as loss channels.
 
