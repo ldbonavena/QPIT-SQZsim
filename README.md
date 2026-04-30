@@ -142,3 +142,53 @@ Module-specific documentation:
   - single-mode
 
 - Full non-degenerate and multimode dynamics are not yet implemented.
+
+---
+
+## Future Work
+
+The current implementation focuses on a below-threshold, degenerate, single-mode OPO model. Several extensions are planned to broaden the physical scope and modeling capabilities of the simulator.
+
+### Planned Features
+
+- **Non-degenerate OPO model**
+  - Explicit signal and idler dynamics
+  - Two-mode squeezing and frequency correlations
+
+- **Pulsed (time-domain) squeezing**
+  - Broadband / multimode description
+  - Time-domain and frequency-resolved correlations beyond single-sideband analysis
+
+- **Waveguide-based nonlinear interaction**
+  - Reduced mode area and enhanced nonlinear coupling
+  - Modified overlap, dispersion, and effective interaction length
+
+---
+
+### Design Approach
+
+These features are intended to be integrated without modifying the high-level pipeline:
+
+cavity → crystal → OPO
+
+Instead of introducing new pipeline stages, they should be implemented as **configurable modes within the existing modules**:
+
+- **Crystal module**
+  - Extend to support different physical platforms (e.g. bulk vs waveguide)
+  - Modify mode area, overlap, and interaction properties accordingly
+
+- **OPO module**
+  - Extend to support different dynamical regimes (e.g. continuous-wave vs pulsed)
+  - Generalize the quantum model to include multi-mode and non-degenerate behavior
+
+A possible internal structure is:
+
+- `src/crystal/platforms/`
+  - `bulk.py`
+  - `waveguide.py`
+
+- `src/opo/regimes/`
+  - `cw.py`
+  - `pulsed.py`
+
+This approach preserves the modular structure of the project while enabling more advanced physical models to be added incrementally.
