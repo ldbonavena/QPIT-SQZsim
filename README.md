@@ -191,4 +191,58 @@ A possible internal structure is:
   - `cw.py`
   - `pulsed.py`
 
+
 This approach preserves the modular structure of the project while enabling more advanced physical models to be added incrementally.
+
+
+---
+
+## Future Extensions: Optimization
+
+A natural extension of the current framework is the introduction of parameter optimization capabilities.
+
+Thanks to the modular pipeline:
+
+cavity → crystal → OPO
+
+it is possible to study how design parameters affect the final squeezing performance.
+
+### Use Cases
+
+This would allow systematic investigation of the impact of:
+
+- Mirror coatings (input/output reflectivity and internal losses)
+- Cavity geometry and beam waist
+- Crystal length and phase-matching conditions
+- Pump operating point
+
+For example, varying mirror reflectivity directly affects:
+- cavity losses (kappa)
+- escape efficiency
+- OPO threshold
+- achievable squeezing
+
+### Where Optimization Fits in the Pipeline
+
+Optimization should not be implemented as a new stage, but as an external loop around the existing pipeline.
+
+The idea is to repeatedly run:
+
+cavity → crystal → OPO
+
+while modifying selected input parameters (e.g. mirror coatings in the cavity stage).
+
+Each iteration produces a new simulation output, from which a figure of merit (such as the minimum squeezing level) can be extracted.
+
+In practice:
+
+- **Cavity stage**  
+  Parameters like mirror reflectivity and losses are varied here. This is typically the primary optimization entry point.
+
+- **Crystal stage**  
+  Can be optimized for phase matching or double resonance conditions (e.g. temperature, poling period, crystal length).
+
+- **OPO stage**  
+  Evaluates the final performance (squeezing spectrum), which serves as the optimization target.
+
+This structure allows the simulator to be used not only for analysis, but also as a design tool for exploring and optimizing OPO configurations.
